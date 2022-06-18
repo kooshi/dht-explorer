@@ -1,7 +1,6 @@
-
+mod dht_node;
 mod routing_table;
 mod u160;
-mod dht_node;
 
 //mod disjoint_set;
 mod options;
@@ -12,9 +11,7 @@ use structopt::StructOpt;
 // use rand::Rng;
 // use std::path::PathBuf;
 
-
 fn main() {
-
     //get options
     let opt = options::Opt::from_args();
     let (w, h) = (opt.width as usize, opt.height as usize);

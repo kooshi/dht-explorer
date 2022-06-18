@@ -3,14 +3,37 @@
 Writing an algo I don't know, in a language I barely know, referencing a language I used like once
 
 # References
-[https://github.com/mh-cbon/dht](https://github.com/mh-cbon/dht)
 
-[https://github.com/anacrolix/dht](https://github.com/anacrolix/dht)
+[Rust Cheat Sheet](https://cheats.rs/)
 
-[https://engineering.bittorrent.com/2013/01/22/bittorrent-tech-talks-dht/](https://engineering.bittorrent.com/2013/01/22/bittorrent-tech-talks-dht/)
+[BitTorrent Enhancement Proposals](https://www.bittorrent.org/beps/bep_0000.html)
 
-[https://cheats.rs/](https://cheats.rs/)
+[Kademlia whitepaper](https://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf)
+
+[Hobbyist golang implementation](https://github.com/mh-cbon/dht)
+
+[Production golang implementation](https://github.com/anacrolix/dht)
+
+[DHT Tech Talk](https://engineering.bittorrent.com/2013/01/22/bittorrent-tech-talks-dht/)
 
 
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
+
+### Todo
+buckets:
+keep recently seen sorting within bucket
+update recent on add
+
+KRPC:
+
+`Ping`
+`Store`
+`Find_Node(id)` -> returns k closest dht nodes
+`Find_Value(id)` -> returns `Store`d value if avaiable, else k closest dht nodes
+
+15 minute refresh
+
+BEPs 20, 42, 32, 33, 44, 51
+
+boostrap|closest_stores|closest_peers|ping|announce_peer|get_peers|find_node|get|put|genkey|sign
