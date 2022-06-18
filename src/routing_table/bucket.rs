@@ -28,7 +28,7 @@ impl<'a> Bucket<'a> {
 
     pub fn add(&mut self, node: DhtNode) {
         if self.next_bucket.is_none() && self.nodes.len() < self.k_size.into() {
-            self.nodes.push(node);
+            self.add_or_update(node);
             return;
         }
         if self.next_bucket.is_none() && self.nodes.len() == self.k_size.into() {
@@ -40,7 +40,17 @@ impl<'a> Bucket<'a> {
             self.next_bucket.as_mut().unwrap().add(node);
             return;
         }
-        if self.nodes.len() < self.k_size.into() {
+        self.add_or_update(node)
+    }
+
+    fn add_or_update(&mut self, node: DhtNode) {
+        if let Some(index) = self.nodes.iter().rev().position(|&n| n.id == node.id) {
+            let mut index = self.nodes.len() - 1 - index; //inverted position
+            while index < self.nodes.len() - 1 {
+                self.nodes.swap(index, index + 1);
+                index += 1;
+            }
+        } else if self.nodes.len() < self.k_size.into() {
             self.nodes.push(node);
         }
     }
@@ -114,11 +124,15 @@ mod tests {
     fn fill() {
         let socket = std::net::SocketAddr::from(SocketAddrV4::from_str("127.0.0.1:1337").unwrap());
         let host = DhtNode { id: U160::empty(), addr: socket };
-        let mut bucket = Bucket::root(&host, 3);
+        let mut bucket = Bucket::root(&host, 8);
+        let test_node = DhtNode {id:U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"), addr:socket};
+        bucket.add(test_node);
         for _ in 0..1_000_000 {
             bucket.add(DhtNode {id: U160::new() >> (rand::random::<u8>() % 161),addr: socket,})
         }
+        bucket.add(test_node);//update
         println!("{:?}",bucket);
+        assert_eq!(bucket.nodes.pop().unwrap().id,test_node.id);
     }
 
     #[test]
