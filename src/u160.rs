@@ -181,18 +181,9 @@ mod tests {
 
     #[test]
     fn ords() {
-        let one = U160 {
-            msbytes: 0,
-            lsbytes: 1,
-        };
-        let two = U160 {
-            msbytes: 0,
-            lsbytes: 2,
-        };
-        let bigone = U160 {
-            msbytes: 1,
-            lsbytes: 0,
-        };
+        let one = U160 { msbytes: 0, lsbytes: 1 };
+        let two = U160 {msbytes: 0, lsbytes: 2 };
+        let bigone = U160 { msbytes: 1, lsbytes: 0 };
         assert!(bigone > two);
         assert!(two > one);
         assert!(one > U160::empty());
@@ -215,24 +206,15 @@ mod tests {
 
     #[test]
     fn bits() {
-        let id = U160 {
-            msbytes: 0x80000000_00000000_00000000_00000000_u128,
-            lsbytes: 0x80000000_u32,
-        };
+        let id = U160 {msbytes: 0x80000000_00000000_00000000_00000000_u128, lsbytes: 0x80000000_u32 };
         assert!(id.get_bit(0));
         assert!(id.get_bit(128));
 
-        let id = U160 {
-            msbytes: 0x00000000_00000000_00000000_00000001_u128,
-            lsbytes: 0x00000001_u32,
-        };
+        let id = U160 { msbytes: 0x00000000_00000000_00000000_00000001_u128, lsbytes: 0x00000001_u32 };
         assert!(id.get_bit(127));
         assert!(id.get_bit(159));
 
-        let id = U160 {
-            msbytes: 0xFFFFFFFE_FFFFFFFF_00000000_00000001_u128,
-            lsbytes: 0x00000001_u32,
-        };
+        let id = U160 { msbytes: 0xFFFFFFFE_FFFFFFFF_00000000_00000001_u128, lsbytes: 0x00000001_u32 };
         assert!(!id.get_bit(31));
     }
 
@@ -257,14 +239,7 @@ mod tests {
         let one = U160::from_hex("4000000000000000100000000000000080000000");
         let two = U160::from_hex("8000000000000000200000000000000100000001");
         assert_eq!(two >> 1, one);
-        assert_eq!(
-            one << 1
-                | U160 {
-                    msbytes: 0,
-                    lsbytes: 1
-                },
-            two
-        );
+        assert_eq!( one << 1 | U160 {msbytes: 0,lsbytes: 1},two);
 
         let one = U160::from_hex("5b19e3ca091fd1105b5ad3e7f1b8bd61e80ccd1c");
         let two = U160::from_hex("05b19e3ca091fd1105b5ad3e7f1b8bd61e80ccd1");
