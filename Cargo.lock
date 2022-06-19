@@ -41,12 +41,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 
 [[package]]
-name = "btoi"
-version = "0.4.2"
+name = "bt_bencode"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97c0869a9faa81f8bbf8102371105d6d0a7b79167a04c340b04ab16892246a11"
+checksum = "e32ae665b1bdfb1a33156d543b221ba1cdeac759f7ba4face4716637d77e2abe"
 dependencies = [
- "num-traits",
+ "itoa",
+ "serde",
+ "serde_bytes",
 ]
 
 [[package]]
@@ -100,13 +102,13 @@ name = "dht-explorer"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "bt_bencode",
  "hex",
  "log",
  "num",
  "parking_lot",
  "rand",
  "serde",
- "serde_bencoded",
  "serde_bytes",
  "serde_derive",
  "stderrlog",
@@ -151,9 +153,9 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "itoa"
-version = "0.4.8"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b71991ff56294aa922b450139ee08b3bfc70982c6b2c7562771375cf73542dd4"
+checksum = "112c678d4050afce233f4f2852bb2eb519230b3cf12f33585275537d7e41578d"
 
 [[package]]
 name = "lazy_static"
@@ -433,17 +435,6 @@ name = "serde"
 version = "1.0.137"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61ea8d54c77f8315140a05f4c7237403bf38b72704d031543aa1d16abbf517d1"
-
-[[package]]
-name = "serde_bencoded"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf340f808c7d1f04ab77e83735b4306399bbf183987a488fbc854ecddb94e047"
-dependencies = [
- "btoi",
- "itoa",
- "serde",
-]
 
 [[package]]
 name = "serde_bytes"
