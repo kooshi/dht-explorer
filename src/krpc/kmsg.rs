@@ -207,11 +207,7 @@ impl Serialize for CompactIPv4NodeInfo {
     where
         S: serde::Serializer {
             let bytes = self.dht_nodes.iter().map(|n|n.ip4_to_bytes()).collect::<Vec<[u8;26]>>().concat();
-            let mut seq = serializer.serialize_seq(Some(bytes.len()))?;
-            for byte in bytes {
-                seq.serialize_element(&byte)?;
-            }
-            seq.end()
+            serializer.serialize_bytes(&bytes)
     }
 }
 impl<'de> Deserialize<'de> for CompactIPv4NodeInfo {
@@ -222,28 +218,21 @@ impl<'de> Deserialize<'de> for CompactIPv4NodeInfo {
             impl<'de> serde::de::Visitor<'de> for CompactIPv4NodeInfoVisitor {   
                 type Value = CompactIPv4NodeInfo;
                 fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                    formatter.write_str(&format!("a sequence of bytes of length n * {}", IPV4_DHT_NODE_BYTES_LEN))
+                    formatter.write_str(&format!("expected n * {} bytes", IPV4_DHT_NODE_BYTES_LEN))
                 }
-                fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-                where
-                    A: serde::de::SeqAccess<'de>,
-                {
-                    let mut nodes = Vec::with_capacity(seq.size_hint().unwrap_or(IPV4_DHT_NODE_BYTES_LEN) / IPV4_DHT_NODE_BYTES_LEN);
-                    let mut buf = [0_u8;IPV4_DHT_NODE_BYTES_LEN];
-                    let mut index = 0_usize;
-                    while let Some(value) = seq.next_element::<u8>()? {
-                        buf[index] = value;
-                        index += 1;
-                        if index == IPV4_DHT_NODE_BYTES_LEN {
-                            index = 0;
-                            nodes.push(DhtNode::ip4_from_bytes(&buf))
-                        }
-                    }
-
-                    Ok(CompactIPv4NodeInfo{dht_nodes: nodes})
+                fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> {
+                    Ok(CompactIPv4NodeInfo{
+                        dht_nodes:v
+                        .chunks_exact(IPV4_DHT_NODE_BYTES_LEN)
+                        .map(|c|{
+                            let mut sized = [0u8;IPV4_DHT_NODE_BYTES_LEN];
+                            sized.copy_from_slice(c);
+                            DhtNode::ip4_from_bytes(&sized)
+                        }).collect()
+                    })
                 }
             }
-            deserializer.deserialize_seq(CompactIPv4NodeInfoVisitor {})
+            deserializer.deserialize_bytes(CompactIPv4NodeInfoVisitor {})
     }
 }
 
@@ -257,13 +246,13 @@ mod tests {
 
     #[test]
     pub fn find_node(){
-        let msg = serde_bencode::from_str::<Msg>("d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();
+        let msg = serde_bencoded::from_str::<Msg>("d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();
         print!("{:?}", msg);
     }
 
     #[test]
     pub fn response(){
-        let response = serde_bencode::from_str::<Msg>("d1:rd2:id20:0123456789abcdefghij5:nodes9:def456...e1:t2:aa1:y1:re").unwrap();
+        let response = serde_bencoded::from_str::<Msg>("d1:rd2:id20:0123456789abcdefghij5:nodes9:def456...e1:t2:aa1:y1:re").unwrap();
         print!("{:?}", response);
     }
 
@@ -275,12 +264,11 @@ mod tests {
         nodes.dht_nodes.push(host);
         let host = DhtNode { id: U160::new(), addr: socket };
         nodes.dht_nodes.push(host);
-        //nodes.node_bytes = Some(nodes.dht_nodes.iter().map(|n|n.ip4_to_bytes()).collect::<Vec<[u8;26]>>().concat());
-        let ser_nodes = serde_bencode::to_string(&nodes).unwrap();
-        println!("{:?}",ser_nodes);
+        let ser_nodes = serde_bencoded::to_vec(&nodes).unwrap();
+        println!("{}",String::from_utf8_lossy(&ser_nodes));
 
-        let deser_nodes = serde_bencode::from_str::<CompactIPv4NodeInfo>(&ser_nodes).unwrap();
-        println!("{:?}",deser_nodes);
-        assert_eq!(nodes,deser_nodes);
+        let deser_nodes = serde_bencoded::from_bytes::<CompactIPv4NodeInfo>(&ser_nodes).unwrap();
+        println!("{:?}", deser_nodes);
+        assert_eq!(nodes, deser_nodes);
     }
 }
