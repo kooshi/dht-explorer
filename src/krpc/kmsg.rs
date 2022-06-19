@@ -11,10 +11,12 @@
 
 */
 
-use serde::{Serialize, Deserialize, Deserializer};
+use std::u8;
+
+use serde::{Serialize, Deserialize, Deserializer, ser::SerializeSeq};
 use serde_derive::{Serialize, Deserialize};
 use log::*;
-use crate::dht_node::{self, DhtNode};
+use crate::dht_node::{self, DhtNode, IPV4_DHT_NODE_BYTES_LEN};
 
 // Msg represents messages that nodes in the network send to each other as specified by the protocol.
 // They are also referred to as the KRPC messages.
@@ -83,44 +85,56 @@ pub struct MsgArgs {
 
     // Senders torrent port
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     port:Option<u16>,           // ""required""
 
     // Use senders apparent DHT port
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     implied_port:Option<bool>,  // ""required""
 
     // Token received from an earlier get_peers query
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     token:Option<String>,       // ""required""
 
     // InfoHash of the torrent
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     info_hash:Option<String>,   // ""required""
 
     // Data stored in a put message (encoded size < 1000)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     v:Option<String>,                                   
 
     // Seq of a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     seq:Option<i64>,
 
     // CAS value of the message mutation
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     cas:Option<i64>,
 
-    // ed25519 public key (32 bytes string) of a mutable msg //TODO change to [u8;32]?
+    // ed25519 public key (32 bytes string) of a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
-    k:Option<String>,
+    #[serde(default)]
+    #[serde(with = "serde_bytes")]
+    k:Option<Vec<u8>>,
 
     // <optional salt to be appended to "k" when hashing (string) a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     salt:Option<String>,
 
-     // ed25519 signature (64 bytes string) //TODO change to [u8;64]?
+     // ed25519 signature (64 bytes string)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[serde(with = "serde_bytes")]
     #[serde(rename = "sig")]
-    sign:Option<String>,
+    sign:Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -130,32 +144,42 @@ pub struct Response {
     
     // K closest nodes to the requested target
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    //#[serde(flatten)]
     nodes: Option<CompactIPv4NodeInfo>,
 
     // Token for future announce_peer
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     token:Option<String>,
 
     // Torrent peers
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     values:Option<Vec<CompactPeer>>,
 
     // Data stored in a put message (encoded size < 1000)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     v:Option<String>,
 
     // Seq of a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     seq:Option<i64>,
 
-    // ed25519 public key (32 bytes string) of a mutable msg //TODO change to [u8;32]?
+    // ed25519 public key (32 bytes string) of a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
-    k:Option<String>,
+    #[serde(default)]
+    #[serde(with = "serde_bytes")]
+    k:Option<Vec<u8>>,
 
-    // ed25519 signature (64 bytes string) //TODO change to [u8;64]?
-   #[serde(skip_serializing_if = "Option::is_none")]
-   #[serde(rename = "sig")]
-   sign:Option<String>,
+    // ed25519 signature (64 bytes string)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[serde(with = "serde_bytes")]
+    #[serde(rename = "sig")]
+    sign:Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -168,25 +192,58 @@ pub struct CompactPeer {
 
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, /*Serialize, Deserialize,*/ Default, PartialEq, Eq)]
 pub struct CompactIPv4NodeInfo {
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    // #[serde(with = "serde_bytes")]
+    // node_bytes:Option<Vec<u8>>,
+    
+    // #[serde(skip)]
     dht_nodes:Vec<DhtNode>,
 }
+
 impl Serialize for CompactIPv4NodeInfo {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer {
             let bytes = self.dht_nodes.iter().map(|n|n.ip4_to_bytes()).collect::<Vec<[u8;26]>>().concat();
-            todo!();
-            serializer.serialize_bytes(&bytes)
+            let mut seq = serializer.serialize_seq(Some(bytes.len()))?;
+            for byte in bytes {
+                seq.serialize_element(&byte)?;
+            }
+            seq.end()
     }
 }
 impl<'de> Deserialize<'de> for CompactIPv4NodeInfo {
     fn deserialize<D>(deserializer: D) -> Result<CompactIPv4NodeInfo, D::Error>
     where
         D: Deserializer<'de> {
-            todo!()
-        //deserializer.deserialize_byte_buf(visitor)
+            struct CompactIPv4NodeInfoVisitor {}
+            impl<'de> serde::de::Visitor<'de> for CompactIPv4NodeInfoVisitor {   
+                type Value = CompactIPv4NodeInfo;
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    formatter.write_str(&format!("a sequence of bytes of length n * {}", IPV4_DHT_NODE_BYTES_LEN))
+                }
+                fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+                where
+                    A: serde::de::SeqAccess<'de>,
+                {
+                    let mut nodes = Vec::with_capacity(seq.size_hint().unwrap_or(IPV4_DHT_NODE_BYTES_LEN) / IPV4_DHT_NODE_BYTES_LEN);
+                    let mut buf = [0_u8;IPV4_DHT_NODE_BYTES_LEN];
+                    let mut index = 0_usize;
+                    while let Some(value) = seq.next_element::<u8>()? {
+                        buf[index] = value;
+                        index += 1;
+                        if index == IPV4_DHT_NODE_BYTES_LEN {
+                            index = 0;
+                            nodes.push(DhtNode::ip4_from_bytes(&buf))
+                        }
+                    }
+
+                    Ok(CompactIPv4NodeInfo{dht_nodes: nodes})
+                }
+            }
+            deserializer.deserialize_seq(CompactIPv4NodeInfoVisitor {})
     }
 }
 
@@ -200,13 +257,13 @@ mod tests {
 
     #[test]
     pub fn find_node(){
-        let msg = serde_bencoded::from_str::<Msg>("d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();
+        let msg = serde_bencode::from_str::<Msg>("d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();
         print!("{:?}", msg);
     }
 
     #[test]
     pub fn response(){
-        let response = serde_bencoded::from_str::<Msg>("d1:rd2:id20:0123456789abcdefghij5:nodes9:def456...e1:t2:aa1:y1:re").unwrap();
+        let response = serde_bencode::from_str::<Msg>("d1:rd2:id20:0123456789abcdefghij5:nodes9:def456...e1:t2:aa1:y1:re").unwrap();
         print!("{:?}", response);
     }
 
@@ -214,12 +271,16 @@ mod tests {
     pub fn ser_nodes() {
         let socket = std::net::SocketAddr::from(SocketAddrV4::from_str("127.0.0.1:1337").unwrap());
         let host = DhtNode { id: U160::new(), addr: socket };
-        let mut nodes = CompactIPv4NodeInfo { dht_nodes: Default::default() };
+        let mut nodes = CompactIPv4NodeInfo { dht_nodes: Default::default()};
         nodes.dht_nodes.push(host);
         let host = DhtNode { id: U160::new(), addr: socket };
         nodes.dht_nodes.push(host);
+        //nodes.node_bytes = Some(nodes.dht_nodes.iter().map(|n|n.ip4_to_bytes()).collect::<Vec<[u8;26]>>().concat());
+        let ser_nodes = serde_bencode::to_string(&nodes).unwrap();
+        println!("{:?}",ser_nodes);
 
-        let ser_nodes = serde_bencoded::to_string(&nodes).unwrap();
-        print!("{:?}",ser_nodes);
+        let deser_nodes = serde_bencode::from_str::<CompactIPv4NodeInfo>(&ser_nodes).unwrap();
+        println!("{:?}",deser_nodes);
+        assert_eq!(nodes,deser_nodes);
     }
 }
