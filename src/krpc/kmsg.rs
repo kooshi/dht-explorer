@@ -11,7 +11,7 @@
 
 */
 mod error;
-use std::u8;
+use std::{u8, net::{SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr}};
 use error::Error;
 use serde::{Serialize, Deserialize, Deserializer, ser::SerializeSeq};
 use serde_derive::{Serialize, Deserialize};
@@ -31,7 +31,15 @@ use crate::dht_node::{self, DhtNode, IPV4_DHT_NODE_BYTES_LEN};
 // may be correlated with multiple queries to the same node. The transaction ID should be encoded as a short string of binary numbers, typically 2 characters are enough as they cover 2^16 outstanding queries. The other key contained in every KRPC message is "y" with a single character value describing the type of message. The value of the "y" key is one of "q" for query, "r" for response, or "e" for error.
 // 3 message types:  QUERY, RESPONSE, ERROR
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct Msg {
+pub struct Message {
+    // required: transaction ID
+    #[serde(rename = "t")]
+    transaction_id:String,
+
+    // required: type of the message: q for QUERY, r for RESPONSE, e for ERROR
+    #[serde(rename = "y")]
+    message_type:String,
+
     // Query method (one of 4: "ping", "find_node", "get_peers", "announce_peer")
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
@@ -42,15 +50,7 @@ pub struct Msg {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "a")]
-    arguments:Option<MsgArgs>,
-
-    // required: transaction ID
-    #[serde(rename = "t")]
-    transaction_id:String,
-
-    // required: type of the message: q for QUERY, r for RESPONSE, e for ERROR
-    #[serde(rename = "y")]
-    message_type:String,
+    arguments:Option<MessageArgs>,
 
     // RESPONSE type only
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -68,7 +68,7 @@ pub struct Msg {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "ip")]
-    peer_ip:Option<CompactPeer>,
+    peer_ip:Option<SocketAddrWrapper>,
 
     // bep43: ro is a read only top level field
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,9 +77,45 @@ pub struct Msg {
     read_only:Option<i64>
 }
 
+//TODO: add enum support to bt_bencode
+//      or fix tuple bugs in serde_bencode or serde_bencoded
+
+static Q_ANNOUNCE_PEER:&'static str = "announce_peer";
+static Q_PING:&'static str = "ping";
+static Q_FIND_NODE:&'static str = "find_node";
+static Q_GET_PEERS:&'static str = "get_peers";
+
+static Y_QUERY:&'static str = "q";
+static Y_RESPONSE:&'static str = "r";
+static Y_ERROR:&'static str = "e";
+
+// #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+// #[serde(rename_all = "snake_case")]
+// pub enum QueryMethod {
+//     Ping,
+//     FindNode,
+//     GetPeers,
+//     AnnouncePeer
+// }
+
+// #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+// pub enum MessageType {
+//     #[serde(rename = "q")]
+//     Query,
+//     #[serde(rename = "r")]
+//     Response,
+//     #[serde(rename = "e")]
+//     Error
+// }
+// impl Default for MessageType {
+//     fn default() -> Self {
+//         Self::Query
+//     }
+// }
+
 // MsgArgs are the query arguments.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct MsgArgs {
+pub struct MessageArgs {
     id: String,                 // ID of the querying Node
     target:String,              // ID of the node sought
 
@@ -156,7 +192,7 @@ pub struct Response {
     // Torrent peers
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    values:Option<Vec<CompactPeer>>,
+    values:Option<Vec<SocketAddrWrapper>>,
 
     // Data stored in a put message (encoded size < 1000)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -180,11 +216,6 @@ pub struct Response {
     #[serde(with = "serde_bytes")]
     #[serde(rename = "sig")]
     sign:Option<Vec<u8>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct CompactPeer {
-
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -226,32 +257,85 @@ impl<'de> Deserialize<'de> for CompactIPv4NodeInfo {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SocketAddrWrapper {
+    socket_addr:Option<SocketAddr>
+}
+impl Serialize for SocketAddrWrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer {
+            if let Some(addr) = self.socket_addr {
+                let mut bytes = match addr.ip() {
+                    IpAddr::V4(ip) => ip.octets().to_vec(),
+                    IpAddr::V6(ip) => ip.octets().to_vec(),
+                };
+                bytes.append(&mut addr.port().to_be_bytes().to_vec());
+                serializer.serialize_bytes(&bytes)
+            } else {
+                serializer.serialize_bytes(&[])
+            }
+    }
+}
+impl<'de> Deserialize<'de> for SocketAddrWrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de> {
+            struct SocketAddrWrapperVisitor {}
+            impl<'de> serde::de::Visitor<'de> for SocketAddrWrapperVisitor {   
+                type Value = SocketAddrWrapper;
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    formatter.write_str(&format!("expected n * {} bytes", IPV4_DHT_NODE_BYTES_LEN))
+                }
+                fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> {
+                    let ip:Option<IpAddr> = match v.len() {
+                        6 => Some(Ipv4Addr::new(v[0], v[1], v[2], v[3]).into()),
+                        18 => { 
+                            let mut bytes = [0_u8;16];
+                            bytes.copy_from_slice(&v[..16]);
+                            Some(Ipv6Addr::from(bytes).into()) 
+                        },
+                        _ => None
+                    };
+                    if let Some(ip) = ip {
+                        let mut portbytes = [0_u8;2];
+                        portbytes.copy_from_slice(&v[v.len()-2..]);
+                        let port = u16::from_be_bytes(portbytes);
+                        Ok(SocketAddrWrapper{socket_addr:Some(SocketAddr::new(ip, port))})
+                    } else {
+                        Ok(SocketAddrWrapper{socket_addr:None})
+                    }
+                }
+            }
+            deserializer.deserialize_bytes(SocketAddrWrapperVisitor {})
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use std::{net::SocketAddrV4, str::FromStr};
+    use std::{net::{SocketAddrV4, SocketAddrV6}, str::FromStr};
 
     use super::*;
     use crate::u160::U160;
 
     #[test]
     pub fn find_node(){
-        let msg = bt_bencode::from_slice::<Msg>(b"d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();
-        print!("{:?}", msg);
-        assert_eq!(msg.message_type, "q");
+        let msg = bt_bencode::from_slice::<Message>(b"d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();
+        println!("{:?}", msg);
+        assert_eq!(msg.message_type, Y_QUERY);
         assert_eq!(msg.transaction_id, "aa");
-        assert_eq!(msg.query_method.unwrap(), "find_node");
-        assert_eq!(msg.arguments.as_ref().unwrap().id,    "abcdefghij0123456789");
+        assert_eq!(msg.query_method.unwrap(), Q_FIND_NODE);
+        assert_eq!(msg.arguments.as_ref().unwrap().id, "abcdefghij0123456789");
         assert_eq!(&msg.arguments.as_ref().unwrap().target,"mnopqrstuvwxyz123456");
     }
 
     #[test]
     pub fn response(){
-        let msg = bt_bencode::from_slice::<Msg>(b"d1:rd2:id20:0123456789abcdefghij5:nodes9:def456...e1:t2:aa1:y1:re").unwrap();
-        print!("{:?}", msg);
-        assert_eq!(msg.message_type, "r");
+        let msg = bt_bencode::from_slice::<Message>(b"d1:rd2:id20:0123456789abcdefghij5:nodes9:def456...e1:t2:aa1:y1:re").unwrap();
+        println!("{:?}", msg);
+        assert_eq!(msg.message_type, Y_RESPONSE);
         assert_eq!(msg.transaction_id, "aa");
-        assert_eq!(msg.response.as_ref().unwrap().id,    "0123456789abcdefghij");
+        assert_eq!(msg.response.as_ref().unwrap().id, "0123456789abcdefghij");
     }
 
     #[test]
@@ -280,8 +364,8 @@ mod tests {
         println!("{:?}", error);
         assert_eq!(test_error, error);
         
-        let mut test_msg: Msg = Default::default();
-        test_msg.message_type = "e".to_string();
+        let mut test_msg: Message = Default::default();
+        test_msg.message_type = Y_ERROR.to_string();
         test_msg.transaction_id = "aa".to_string();
         test_msg.error = Some(error::Error(201,"A Generic Error Ocurred".to_string()));
 
@@ -289,10 +373,27 @@ mod tests {
         let test_error = bt_bencode::to_vec(&test_msg).unwrap();
         println!("{:?}", String::from_utf8_lossy(&test_error));
 
-        let err_message = bt_bencode::from_slice::<Msg>(&test_error).unwrap();
+        let err_message = bt_bencode::from_slice::<Message>(&test_error).unwrap();
         println!("{:?}", err_message);
         assert_eq!(err_message, test_msg);
-        assert_eq!(err_message.message_type, "e");
+        assert_eq!(err_message.message_type, Y_ERROR);
         assert_eq!(err_message.transaction_id, "aa");
+    }
+
+    #[test]
+    pub fn addr_wrap() {
+        let test = SocketAddrWrapper{socket_addr:Some(SocketAddrV4::from_str("127.0.0.1:1337").unwrap().into())};
+        let test_vec = bt_bencode::to_vec(&test).unwrap();
+        println!("{}",String::from_utf8_lossy(&test_vec));
+        let test_out = bt_bencode::from_slice::<SocketAddrWrapper>(&test_vec).unwrap();
+        println!("{:?}", test_out);
+        assert_eq!(test, test_out);
+
+        let testv6 = SocketAddrWrapper{socket_addr:Some(SocketAddrV6::from_str("[2001:db8:85a3:8d3:1319:8a2e:370:7348]:1337").unwrap().into())};
+        let test_vec = bt_bencode::to_vec(&testv6).unwrap();
+        println!("{}",String::from_utf8_lossy(&test_vec));
+        let test_out = bt_bencode::from_slice::<SocketAddrWrapper>(&test_vec).unwrap();
+        println!("{:?}", test_out);
+        assert_eq!(testv6, test_out);
     }
 }
