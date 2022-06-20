@@ -4,17 +4,14 @@ use kmsg;
 use serde::de;
 use serde::ser;
 use serde::{Deserialize, Deserializer, Serialize};
-// impl Serialize for Message {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: serde::Serializer,
-//     {
-//         let mut builder = kmsg::KMessage::builder()
-//         .transaction_id()
-
-//         serializer.ser(builder.build())
-//     }
-// }
+impl Serialize for Message {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_kmsg().serialize(serializer)
+    }
+}
 
 impl<'de> Deserialize<'de> for Message {
     fn deserialize<D>(deserializer: D) -> Result<Message, D::Error>

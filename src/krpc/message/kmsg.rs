@@ -44,41 +44,48 @@ pub const Y_ERROR: &'static str = "e";
 #[derive(TypedBuilder, Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct KMessage {
     // required: transaction ID
+    #[serde(default)] //some errors can cause blank tid
     #[serde(rename = "t")]
     pub transaction_id: String,
 
     // required: type of the message: q for QUERY, r for RESPONSE, e for ERROR
     #[serde(rename = "y")]
+    #[builder(setter(into))]
     pub message_type: String,
 
     // Query method (one of 4: "ping", "find_node", "get_peers", "announce_peer")
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "q")]
+    #[builder(default, setter(strip_option, into))]
     pub query_method: Option<String>,
 
     // named arguments sent with a query
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "a")]
+    #[builder(default, setter(strip_option))]
     pub arguments: Option<MessageArgs>,
 
     // RESPONSE type only
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "r")]
+    #[builder(default, setter(strip_option))]
     pub response: Option<KResponse>,
 
     // ERROR type only
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "e")]
+    #[builder(default, setter(strip_option))]
     pub error: Option<Error>,
 
     // bep42: outgoing query: requestor ip, incoming query: our ip accodring to the remote
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "ip")]
+    #[builder(default, setter(strip_option))]
     pub peer_ip: Option<SocketAddrWrapper>,
 
     // bep43: ro is a read only top level field
@@ -87,6 +94,7 @@ pub struct KMessage {
     #[serde(rename = "ro")]
     #[serde(deserialize_with = "serde_extra::bool_from_int")]
     #[serde(serialize_with = "serde_extra::int_from_bool")]
+    #[builder(default, setter(strip_option))]
     pub read_only: Option<bool>,
 
     // non standard field found in the wild
@@ -94,22 +102,25 @@ pub struct KMessage {
     #[serde(default)]
     #[serde(with = "serde_bytes")]
     #[serde(rename = "v")]
+    #[builder(default, setter(skip))]
     pub version: Option<Vec<u8>>,
 }
 
 // MsgArgs are the query arguments.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(TypedBuilder, Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct MessageArgs {
     pub id: U160, // ID of the querying Node
 
     // ID of the node sought
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
+    #[builder(default, setter(strip_option))]
     pub target: Option<U160>,
 
     // Senders torrent port
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
+    #[builder(default, setter(strip_option))]
     port: Option<u16>,
 
     // Use senders apparent DHT port
@@ -117,55 +128,66 @@ pub struct MessageArgs {
     #[serde(default)]
     #[serde(deserialize_with = "serde_extra::bool_from_int")]
     #[serde(serialize_with = "serde_extra::int_from_bool")]
+    #[builder(default, setter(strip_option))]
     pub implied_port: Option<bool>,
 
     // Token received from an earlier get_peers query
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    pub token: Option<String>,
+    #[serde(with = "serde_bytes")]
+    #[builder(default, setter(strip_option))]
+    pub token: Option<Vec<u8>>,
 
     // InfoHash of the torrent
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
+    #[builder(default, setter(strip_option))]
     pub info_hash: Option<U160>,
 
     #[serde(flatten)]
+    #[builder(default)]
     pub bep44: MessageArgsBep44,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(TypedBuilder, Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct MessageArgsBep44 {
     // Data stored in a put message (encoded size < 1000)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(with = "serde_bytes")]
+    #[builder(default, setter(strip_option))]
     pub v: Option<Vec<u8>>,
 
     // Seq of a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
+    #[builder(default, setter(strip_option))]
     pub seq: Option<i64>,
 
     // CAS value of the message mutation
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
+    #[builder(default, setter(strip_option))]
     pub cas: Option<i64>,
 
     // ed25519 public key (32 bytes string) of a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(with = "serde_bytes")]
+    #[builder(default, setter(strip_option))]
     pub k: Option<Vec<u8>>,
 
     // <optional salt to be appended to "k" when hashing (string) a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
+    #[builder(default, setter(strip_option))]
     pub salt: Option<String>,
 
     // ed25519 signature (64 bytes string)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(with = "serde_bytes")]
+    #[builder(default, setter(strip_option))]
     pub sig: Option<Vec<u8>>,
 }
 
