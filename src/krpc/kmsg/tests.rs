@@ -108,15 +108,15 @@ pub fn addr_wrap() {
 }
 
 #[test]
-pub fn ping_response() {
-    let buf = base64::decode("ZDE6cmQyOmlkMjA6es6LsAHqL6S93sAyV+y8t2mzqLdlMTp0Nzp0ZXN0aW5nMTp2NDpsdA2AMTp5MTpyZQ==").unwrap();
+pub fn find_nodes_response() {
+    let buf = base64::decode("ZDE6cmQyOmlkMjA6es6LsAHqL6S93sAyV+y8t2mzqLc1Om5vZGVzMjA4Ohxv57KlTw7ylJm/nb9dlzxDiGb4Xhec08jVHHzKfICCRyerOHPZ5RFX4l8ZVS8Fh7SuyNUt0T6IPmnhch1HBIiumvC3UEJwikgVERrB2C4aUVB3Ct3idsofBy76tWEIvANLwRf6yMfYPMf1EUymrcebpxptH/y4+oL2pppV5GYISj8Ap1bzrrZLAN16RBnANuNDBmZk67mdoUT3cSXUhlwwWTbCY1v+OeOzxg8Ukr35w9ElOsjVHXRLocGoVFTZAfvTeZ5szKs2kjBOUfyP2P9lMTp0Nzp0ZXN0aW5nMTp2NDpsdA2AMTp5MTpyZQ==").unwrap();
     println!("MESSAGE: {}", safe_string_from_slice(&buf));
     let msg = bt_bencode::from_slice::<Message>(&buf).unwrap();
     println!("{:?}", msg);
 }
 
 #[test]
-pub fn data() {
+pub fn ping_response_plus_data() {
     let buf = base64::decode("ZDE6cmQyOmlkMjA6es6LsAHqL6S93sAyV+y8t2mzqLdlMTp0Nzp0ZXN0aW5nMTp2NDpsdA2AMTp5MTpyZQ==").unwrap();
     println!("MESSAGE: {}", safe_string_from_slice(&buf));
     let mut msg = bt_bencode::from_slice::<Message>(&buf).unwrap();

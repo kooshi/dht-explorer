@@ -30,7 +30,7 @@ impl<'de> Deserialize<'de> for SocketAddrWrapper {
         impl<'de> serde::de::Visitor<'de> for SocketAddrWrapperVisitor {
             type Value = SocketAddrWrapper;
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str(&format!("expected n * {} bytes", IPV4_DHT_NODE_BYTES_LEN))
+                formatter.write_str(&format!("expected 6 or 18 bytes"))
             }
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> {
                 let ip: Option<IpAddr> = match v.len() {

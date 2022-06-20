@@ -45,11 +45,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut msg:krpc::kmsg::Message = Default::default();
     msg.arguments = Some(Default::default());
-    msg.query_method = Some("ping".to_string());
+    msg.read_only = Some(true);
+    msg.query_method = Some("find_node".to_string());
     msg.message_type = "q".to_string();
     msg.transaction_id = "testing".to_string();
     msg.peer_ip = Some(SocketAddrWrapper{socket_addr: Some(SocketAddrV4::from_str(&opt.public_address).unwrap().into())});
     msg.arguments.as_mut().unwrap().id = u160::U160::rand();
+    msg.arguments.as_mut().unwrap().target = Some(u160::U160::rand());
 
     let msg = bt_bencode::to_vec(&msg).unwrap();
     println!("SENDING: {}", krpc::kmsg::safe_string_from_slice(&msg));
@@ -62,6 +64,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Base64: {}", base64::encode(&buf[..len]));
     println!();
     let result = bt_bencode::from_slice::<krpc::kmsg::Message>(&buf[..len]).unwrap();
-    println!("{:?}",result);
+    println!("{:#?}",result);
     Ok(())
 }

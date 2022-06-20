@@ -1,5 +1,6 @@
 
-use serde::{Serialize,Deserialize,Deserializer};
+use bt_bencode::value;
+use serde::{de::{Error,Unexpected},Serialize,Deserialize,Deserializer,Serializer};
 use crate::u160::U160;
 
 impl Serialize for U160 {
@@ -28,5 +29,31 @@ impl<'de> Deserialize<'de> for U160 {
             }
         }
         deserializer.deserialize_bytes(U160Visitor {})
+    }
+}
+
+
+pub fn int_from_bool<S>(value: &Option<bool>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer
+{
+    if value.is_some() && value.unwrap() {
+        serializer.serialize_i32(1)
+    } else {
+        serializer.serialize_i32(0)
+    }
+}
+
+pub fn bool_from_int<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match u8::deserialize(deserializer)? {
+        0 => Ok(Some(false)),
+        1 => Ok(Some(true)),
+        other => Err(Error::invalid_value(
+            Unexpected::Unsigned(other as u64),
+            &"zero or one",
+        )),
     }
 }
