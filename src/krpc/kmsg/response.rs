@@ -23,6 +23,7 @@ pub struct Response {
     pub values: Option<Vec<SocketAddrWrapper>>,
 
     #[serde(flatten)]
+    #[serde(default)]
     pub bep44: ResponseBep44,
 }
 

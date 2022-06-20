@@ -114,3 +114,17 @@ pub fn ping_response() {
     let msg = bt_bencode::from_slice::<Message>(&buf).unwrap();
     println!("{:?}", msg);
 }
+
+#[test]
+pub fn data() {
+    let buf = base64::decode("ZDE6cmQyOmlkMjA6es6LsAHqL6S93sAyV+y8t2mzqLdlMTp0Nzp0ZXN0aW5nMTp2NDpsdA2AMTp5MTpyZQ==").unwrap();
+    println!("MESSAGE: {}", safe_string_from_slice(&buf));
+    let mut msg = bt_bencode::from_slice::<Message>(&buf).unwrap();
+    msg.response.as_mut().unwrap().bep44.v = Some(b"HELLOWORLD".to_vec());
+
+    let buf = bt_bencode::to_vec(&msg).unwrap();
+    println!("MESSAGE: {}", safe_string_from_slice(&buf));
+    
+    let msg = bt_bencode::from_slice::<Message>(&buf).unwrap();
+    println!("{:?}", msg);
+}

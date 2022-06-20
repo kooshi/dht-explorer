@@ -74,6 +74,13 @@ pub struct Message {
     #[serde(default)]
     #[serde(rename = "ro")]
     pub read_only: Option<bool>,
+
+    // non standard field found in the wild
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[serde(with = "serde_bytes")]
+    #[serde(rename = "v")]
+    pub version: Option<Vec<u8>>
 }
 
 //TODO: add enum support to bt_bencode
