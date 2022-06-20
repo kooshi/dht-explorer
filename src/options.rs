@@ -10,6 +10,6 @@ pub struct Opt {
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     pub verbose: usize,
     /// Timestamp (sec, ms, ns, none)
-    #[structopt(short = "t", long = "timestamp", )]
+    #[structopt(short = "t", long = "timestamp")]
     pub ts: Option<stderrlog::Timestamp>,
 }

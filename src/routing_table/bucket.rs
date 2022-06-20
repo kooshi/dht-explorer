@@ -55,9 +55,8 @@ impl<'a> Bucket<'a> {
         }
     }
 
-    pub fn lookup(&self, id:U160) -> Vec<DhtNode> {
-        let mut k_nearest =
-        if self.next_bucket.is_some() && !self.id_belongs_here(id) {
+    pub fn lookup(&self, id: U160) -> Vec<DhtNode> {
+        let mut k_nearest = if self.next_bucket.is_some() && !self.id_belongs_here(id) {
             self.next_bucket.as_ref().unwrap().lookup(id)
         } else {
             Vec::with_capacity(self.k_size.into())
@@ -70,7 +69,16 @@ impl<'a> Bucket<'a> {
 
         let gap = self.k_size as usize - k_nearest.len();
         if gap > 0 && self.next_bucket.is_some() {
-            k_nearest.extend(self.next_bucket.as_ref().unwrap().lookup(id).iter().take(gap).cloned().collect::<Vec<_>>());
+            k_nearest.extend(
+                self.next_bucket
+                    .as_ref()
+                    .unwrap()
+                    .lookup(id)
+                    .iter()
+                    .take(gap)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            );
         }
 
         k_nearest
@@ -123,36 +131,55 @@ mod tests {
     #[test]
     fn fill() {
         let socket = std::net::SocketAddr::from(SocketAddrV4::from_str("127.0.0.1:1337").unwrap());
-        let host = DhtNode { id: U160::empty(), addr: socket };
+        let host = DhtNode {
+            id: U160::empty(),
+            addr: socket,
+        };
         let mut bucket = Bucket::root(&host, 8);
-        let test_node = DhtNode {id:U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"), addr:socket};
+        let test_node = DhtNode {
+            id: U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"),
+            addr: socket,
+        };
         bucket.add(test_node);
         for _ in 0..1_000_000 {
-            bucket.add(DhtNode {id: U160::new() >> (rand::random::<u8>() % 161),addr: socket,})
+            bucket.add(DhtNode {
+                id: U160::rand() >> (rand::random::<u8>() % 161),
+                addr: socket,
+            })
         }
-        bucket.add(test_node);//update
-        println!("{:?}",bucket);
-        assert_eq!(bucket.nodes.pop().unwrap().id,test_node.id);
+        bucket.add(test_node); //update
+        println!("{:?}", bucket);
+        assert_eq!(bucket.nodes.pop().unwrap().id, test_node.id);
     }
 
     #[test]
     fn lookup() {
         let socket = std::net::SocketAddr::from(SocketAddrV4::from_str("127.0.0.1:1337").unwrap());
-        let host = DhtNode { id: U160::empty(), addr: socket };
+        let host = DhtNode {
+            id: U160::empty(),
+            addr: socket,
+        };
         let mut bucket = Bucket::root(&host, 30);
         for _ in 0..60 {
-            bucket.add(DhtNode {id: U160::new() >> (rand::random::<u8>() % 161),addr: socket,})
+            bucket.add(DhtNode {
+                id: U160::rand() >> (rand::random::<u8>() % 161),
+                addr: socket,
+            })
         }
 
-        let query = U160::new() >> (rand::random::<u8>() % 161);
+        let query = U160::rand() >> (rand::random::<u8>() % 161);
         let k_nearest = bucket.lookup(query);
-        println!("Searching for: {:?}\nFound:\n{:?}",query,k_nearest);
+        println!("Searching for: {:?}\nFound:\n{:?}", query, k_nearest);
 
-        let query = U160::new();
+        let query = U160::rand();
         let k_nearest = bucket.lookup(query);
-        println!("Searching for: {:?}\nFound:\n{:?}",query,k_nearest);
+        println!("Searching for: {:?}\nFound:\n{:?}", query, k_nearest);
 
         let k_nearest = bucket.lookup(U160::empty());
-        println!("Searching for: {:?}\nFound:\n{:?}",U160::empty(),k_nearest);
+        println!(
+            "Searching for: {:?}\nFound:\n{:?}",
+            U160::empty(),
+            k_nearest
+        );
     }
 }

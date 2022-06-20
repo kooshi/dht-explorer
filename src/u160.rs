@@ -8,7 +8,10 @@ pub struct U160 {
 }
 
 impl U160 {
-    pub fn new() -> Self {
+    pub fn new(msbytes: u128, lsbytes: u32) -> Self {
+        Self { msbytes, lsbytes }
+    }
+    pub fn rand() -> Self {
         Self {
             msbytes: rand::random(),
             lsbytes: rand::random(),
@@ -36,10 +39,7 @@ impl U160 {
         msbytes.copy_from_slice(&bytes[..16]);
         let mut lsbytes = [0_u8; 4];
         lsbytes.copy_from_slice(&bytes[16..]);
-        Self {
-            msbytes: u128::from_be_bytes(msbytes),
-            lsbytes: u32::from_be_bytes(lsbytes),
-        }
+        Self::new(u128::from_be_bytes(msbytes), u32::from_be_bytes(lsbytes))
     }
 
     pub fn to_be_bytes(self) -> [u8; 20] {
@@ -61,30 +61,21 @@ impl U160 {
 impl BitXor for U160 {
     type Output = Self;
     fn bitxor(self, rhs: Self) -> Self::Output {
-        Self {
-            msbytes: self.msbytes ^ rhs.msbytes,
-            lsbytes: self.lsbytes ^ rhs.lsbytes,
-        }
+        Self::new(self.msbytes ^ rhs.msbytes, self.lsbytes ^ rhs.lsbytes)
     }
 }
 
 impl BitAnd for U160 {
     type Output = Self;
     fn bitand(self, rhs: Self) -> Self::Output {
-        Self {
-            msbytes: self.msbytes & rhs.msbytes,
-            lsbytes: self.lsbytes & rhs.lsbytes,
-        }
+        Self::new(self.msbytes & rhs.msbytes, self.lsbytes & rhs.lsbytes)
     }
 }
 
 impl BitOr for U160 {
     type Output = Self;
     fn bitor(self, rhs: Self) -> Self::Output {
-        Self {
-            msbytes: self.msbytes | rhs.msbytes,
-            lsbytes: self.lsbytes | rhs.lsbytes,
-        }
+        Self::new(self.msbytes | rhs.msbytes, self.lsbytes | rhs.lsbytes)
     }
 }
 
@@ -109,7 +100,7 @@ impl Shr<u8> for U160 {
         };
         let lsbytes = lsbytes | overflow;
 
-        Self { msbytes, lsbytes }
+        Self::new(msbytes, lsbytes)
     }
 }
 
@@ -138,7 +129,7 @@ impl Shl<u8> for U160 {
         };
         let msbytes = msbytes | overflow as u128;
 
-        Self { msbytes, lsbytes }
+        Self::new(msbytes, lsbytes)
     }
 }
 
@@ -160,7 +151,7 @@ mod tests {
 
     #[test]
     fn new() {
-        let id = U160::new();
+        let id = U160::rand();
         println!("{0}", id.msbytes);
         println!("{0}", id.lsbytes);
         assert_ne!(id.msbytes, 0);
@@ -169,21 +160,21 @@ mod tests {
 
     #[test]
     fn distance() {
-        let one = U160::new();
+        let one = U160::rand();
         let distance = one.distance(one);
         assert_eq!(distance.lsbytes, 0);
         assert_eq!(distance.msbytes, 0);
 
-        let two = U160::new();
+        let two = U160::rand();
         let distance2 = one.distance(two);
         assert_eq!(distance2, one ^ two);
     }
 
     #[test]
     fn ords() {
-        let one = U160 { msbytes: 0, lsbytes: 1 };
-        let two = U160 {msbytes: 0, lsbytes: 2 };
-        let bigone = U160 { msbytes: 1, lsbytes: 0 };
+        let one = U160::new(0, 1);
+        let two = U160::new(0, 2);
+        let bigone = U160::new(1, 0);
         assert!(bigone > two);
         assert!(two > one);
         assert!(one > U160::empty());
@@ -191,14 +182,14 @@ mod tests {
 
     #[test]
     fn display() {
-        let id = U160::new();
+        let id = U160::rand();
         println!("{:?}", id);
         println!("{}", id);
     }
 
     #[test]
     fn bytes() {
-        let id = U160::new();
+        let id = U160::rand();
         let bytes = id.to_be_bytes();
         let id2 = U160::from_be_bytes(bytes);
         assert_eq!(id, id2);
@@ -206,15 +197,15 @@ mod tests {
 
     #[test]
     fn bits() {
-        let id = U160 {msbytes: 0x80000000_00000000_00000000_00000000_u128, lsbytes: 0x80000000_u32 };
+        let id = U160::new(0x80000000_00000000_00000000_00000000_u128, 0x80000000_u32);
         assert!(id.get_bit(0));
         assert!(id.get_bit(128));
 
-        let id = U160 { msbytes: 0x00000000_00000000_00000000_00000001_u128, lsbytes: 0x00000001_u32 };
+        let id = U160::new(0x00000000_00000000_00000000_00000001_u128, 0x00000001_u32);
         assert!(id.get_bit(127));
         assert!(id.get_bit(159));
 
-        let id = U160 { msbytes: 0xFFFFFFFE_FFFFFFFF_00000000_00000001_u128, lsbytes: 0x00000001_u32 };
+        let id = U160::new(0xFFFFFFFE_FFFFFFFF_00000000_00000001_u128, 0x00000001_u32);
         assert!(!id.get_bit(31));
     }
 
@@ -239,7 +230,7 @@ mod tests {
         let one = U160::from_hex("4000000000000000100000000000000080000000");
         let two = U160::from_hex("8000000000000000200000000000000100000001");
         assert_eq!(two >> 1, one);
-        assert_eq!( one << 1 | U160 {msbytes: 0,lsbytes: 1},two);
+        assert_eq!(one << 1 | U160::new(0, 1), two);
 
         let one = U160::from_hex("5b19e3ca091fd1105b5ad3e7f1b8bd61e80ccd1c");
         let two = U160::from_hex("05b19e3ca091fd1105b5ad3e7f1b8bd61e80ccd1");
@@ -255,7 +246,7 @@ mod tests {
         assert_eq!(one >> 128, two);
         assert_eq!(two << 128, thr);
 
-        assert_eq!(U160::new() >> 160, U160::empty());
-        assert_eq!(U160::new() << 160, U160::empty());
+        assert_eq!(U160::rand() >> 160, U160::empty());
+        assert_eq!(U160::rand() << 160, U160::empty());
     }
 }
