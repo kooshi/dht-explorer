@@ -1,7 +1,7 @@
 extern crate hex;
 use std::{fmt, ops::*};
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct U160 {
     msbytes: u128,
     lsbytes: u32,
@@ -31,10 +31,10 @@ impl U160 {
     pub fn from_hex(hex: &str) -> Self {
         let mut bytes = [0_u8; 20];
         hex::decode_to_slice(hex, &mut bytes).expect("error getting id from hex");
-        Self::from_be_bytes(bytes)
+        Self::from_be_bytes(&bytes)
     }
 
-    pub fn from_be_bytes(bytes: [u8; 20]) -> Self {
+    pub fn from_be_bytes(bytes: &[u8; 20]) -> Self {
         let mut msbytes = [0_u8; 16];
         msbytes.copy_from_slice(&bytes[..16]);
         let mut lsbytes = [0_u8; 4];
@@ -191,7 +191,7 @@ mod tests {
     fn bytes() {
         let id = U160::rand();
         let bytes = id.to_be_bytes();
-        let id2 = U160::from_be_bytes(bytes);
+        let id2 = U160::from_be_bytes(&bytes);
         assert_eq!(id, id2);
     }
 

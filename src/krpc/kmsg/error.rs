@@ -5,8 +5,8 @@ pub struct Error(pub u16, pub String);
 
 impl Error {
     // ErrorTimeout is returned when the query times out.
-    pub fn error_timeout() -> Self {
-        Self(201, "Query timeout".to_string())
+    pub fn error_generic() -> Self {
+        Self(201, "A Generic Error Occurred".to_string())
     }
 
     // ErrorMethodUnknown is returned when the query verb is unknown.

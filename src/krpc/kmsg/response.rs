@@ -48,6 +48,16 @@ pub struct ResponseBep44 {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(with = "serde_bytes")]
-    #[serde(rename = "sig")]
-    pub sign: Option<Vec<u8>>,
+    pub sig: Option<Vec<u8>>,
+}
+
+
+pub struct ResponseBep51 {
+    //TODO https://github.com/anacrolix/dht/blob/master/krpc/msg.go
+    //     https://www.bittorrent.org/beps/bep_0051.html
+}
+
+pub struct ResponseBep33 {
+    //TODO https://github.com/anacrolix/dht/blob/master/krpc/msg.go
+    //     https://www.bittorrent.org/beps/bep_0033.html
 }

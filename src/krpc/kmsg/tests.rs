@@ -13,10 +13,10 @@ pub fn find_node() {
     assert_eq!(msg.message_type, Y_QUERY);
     assert_eq!(msg.transaction_id, "aa");
     assert_eq!(msg.query_method.unwrap(), Q_FIND_NODE);
-    assert_eq!(msg.arguments.as_ref().unwrap().id, "abcdefghij0123456789");
+    assert_eq!(msg.arguments.as_ref().unwrap().id, U160::from_be_bytes(b"abcdefghij0123456789"));
     assert_eq!(
-        &msg.arguments.as_ref().unwrap().target,
-        "mnopqrstuvwxyz123456"
+        msg.arguments.as_ref().unwrap().target.unwrap(),
+        U160::from_be_bytes(b"mnopqrstuvwxyz123456")
     );
 }
 

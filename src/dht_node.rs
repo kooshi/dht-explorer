@@ -30,7 +30,7 @@ impl DhtNode {
     pub fn ip4_from_bytes(bytes: &[u8; IPV4_DHT_NODE_BYTES_LEN]) -> Self {
         let mut idbytes = [0_u8; 20];
         idbytes.copy_from_slice(&bytes[..20]);
-        let id = U160::from_be_bytes(idbytes);
+        let id = U160::from_be_bytes(&idbytes);
         let mut portbytes = [0_u8; 2];
         portbytes.copy_from_slice(&bytes[24..]);
         let addr = SocketAddr::new(

@@ -2,8 +2,9 @@ mod error;
 mod nodes;
 mod response;
 mod socket_addr_wrapper;
+mod u160_serde;
 mod tests;
-use crate::dht_node::{self, DhtNode, IPV4_DHT_NODE_BYTES_LEN};
+use crate::{dht_node::{self, DhtNode, IPV4_DHT_NODE_BYTES_LEN}, u160::U160};
 use error::Error;
 use log::*;
 use nodes::CompactIPv4NodeInfo;
@@ -32,47 +33,47 @@ use std::{
 pub struct Message {
     // required: transaction ID
     #[serde(rename = "t")]
-    transaction_id: String,
+    pub transaction_id: String,
 
     // required: type of the message: q for QUERY, r for RESPONSE, e for ERROR
     #[serde(rename = "y")]
-    message_type: String,
+    pub message_type: String,
 
     // Query method (one of 4: "ping", "find_node", "get_peers", "announce_peer")
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "q")]
-    query_method: Option<String>,
+    pub query_method: Option<String>,
 
     // named arguments sent with a query
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "a")]
-    arguments: Option<MessageArgs>,
+    pub arguments: Option<MessageArgs>,
 
     // RESPONSE type only
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "r")]
-    response: Option<Response>,
+    pub response: Option<Response>,
 
     // ERROR type only
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "e")]
-    error: Option<Error>,
+    pub error: Option<Error>,
 
     // bep42: outgoing query: requestor ip, incoming query: our ip accodring to the remote
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "ip")]
-    peer_ip: Option<SocketAddrWrapper>,
+    pub peer_ip: Option<SocketAddrWrapper>,
 
     // bep43: ro is a read only top level field
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "ro")]
-    read_only: Option<i64>,
+    pub read_only: Option<bool>,
 }
 
 //TODO: add enum support to bt_bencode
@@ -82,6 +83,9 @@ static Q_ANNOUNCE_PEER: &'static str = "announce_peer";
 static Q_PING: &'static str = "ping";
 static Q_FIND_NODE: &'static str = "find_node";
 static Q_GET_PEERS: &'static str = "get_peers";
+//BEP44
+static Q_PUT: &'static str = "put";
+static Q_GET: &'static str = "get";
 
 static Y_QUERY: &'static str = "q";
 static Y_RESPONSE: &'static str = "r";
@@ -114,59 +118,68 @@ static Y_ERROR: &'static str = "e";
 // MsgArgs are the query arguments.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct MessageArgs {
-    id: String,     // ID of the querying Node
-    target: String, // ID of the node sought
+    pub id: U160,     // ID of the querying Node
+
+    // ID of the node sought
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub target: Option<U160>,
 
     // Senders torrent port
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    port: Option<u16>, // ""required""
+    port: Option<u16>,
 
     // Use senders apparent DHT port
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    implied_port: Option<bool>, // ""required""
+    pub implied_port: Option<bool>,
 
     // Token received from an earlier get_peers query
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    token: Option<String>, // ""required""
+    pub token: Option<String>,
 
     // InfoHash of the torrent
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    info_hash: Option<String>, // ""required""
+    pub info_hash: Option<U160>,
 
+    #[serde(flatten)]
+    pub bep44:MessageArgsBep44,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct MessageArgsBep44 {
     // Data stored in a put message (encoded size < 1000)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    v: Option<String>,
+    pub v: Option<String>,
 
     // Seq of a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    seq: Option<i64>,
+    pub seq: Option<i64>,
 
     // CAS value of the message mutation
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    cas: Option<i64>,
+    pub cas: Option<i64>,
 
     // ed25519 public key (32 bytes string) of a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(with = "serde_bytes")]
-    k: Option<Vec<u8>>,
+    pub k: Option<Vec<u8>>,
 
     // <optional salt to be appended to "k" when hashing (string) a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    salt: Option<String>,
+    pub salt: Option<String>,
 
     // ed25519 signature (64 bytes string)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(with = "serde_bytes")]
-    #[serde(rename = "sig")]
-    sign: Option<Vec<u8>>,
+    pub sig: Option<Vec<u8>>,
 }
