@@ -4,7 +4,7 @@ use serde_derive::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct Response {
     // ID of the querying node
-    pub id: String,
+    pub id: U160,
 
     // K closest nodes to the requested target
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -31,7 +31,8 @@ pub struct ResponseBep44 {
     // Data stored in a put message (encoded size < 1000)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    pub v: Option<String>,
+    #[serde(with = "serde_bytes")]
+    pub v: Option<Vec<u8>>,
 
     // Seq of a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]

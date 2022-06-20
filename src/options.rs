@@ -12,4 +12,13 @@ pub struct Opt {
     /// Timestamp (sec, ms, ns, none)
     #[structopt(short = "t", long = "timestamp")]
     pub ts: Option<stderrlog::Timestamp>,
+
+    #[structopt(long)]
+    pub bind_address: String,
+
+    #[structopt(long)]
+    pub public_address: String,
+
+    #[structopt(long)]
+    pub target_address:String,
 }

@@ -1,1 +1,1 @@
-mod kmsg;
+pub(crate) mod kmsg;

@@ -29,7 +29,7 @@ pub fn response() {
     println!("{:?}", msg);
     assert_eq!(msg.message_type, Y_RESPONSE);
     assert_eq!(msg.transaction_id, "aa");
-    assert_eq!(msg.response.as_ref().unwrap().id, "0123456789abcdefghij");
+    assert_eq!(msg.response.as_ref().unwrap().id, U160::from_be_bytes(b"0123456789abcdefghij"));
 }
 
 #[test]
@@ -49,7 +49,7 @@ pub fn ser_nodes() {
     };
     nodes.dht_nodes.push(host);
     let ser_nodes = bt_bencode::to_vec(&nodes).unwrap();
-    println!("{}", String::from_utf8_lossy(&ser_nodes));
+    println!("NODES: {}", safe_string_from_slice(&ser_nodes));
 
     let deser_nodes = bt_bencode::from_slice::<CompactIPv4NodeInfo>(&ser_nodes).unwrap();
     println!("{:?}", deser_nodes);
@@ -60,7 +60,7 @@ pub fn ser_nodes() {
 pub fn error() {
     let test_error = Error::error_invalid_sig();
     let encoded = bt_bencode::to_vec(&test_error).unwrap();
-    println!("{:?}", String::from_utf8_lossy(&encoded));
+    println!("TESTERROR: {}", safe_string_from_slice(&encoded));
 
     let error = bt_bencode::from_slice::<Error>(&encoded).unwrap();
     println!("{:?}", error);
@@ -73,7 +73,7 @@ pub fn error() {
 
     //"d1:eli201e23:A Generic Error Ocurrede1:t2:aa1:y1:ee"
     let test_error = bt_bencode::to_vec(&test_msg).unwrap();
-    println!("{:?}", String::from_utf8_lossy(&test_error));
+    println!("TESTERROR: {}", safe_string_from_slice(&test_error));
 
     let err_message = bt_bencode::from_slice::<Message>(&test_error).unwrap();
     println!("{:?}", err_message);
@@ -88,7 +88,7 @@ pub fn addr_wrap() {
         socket_addr: Some(SocketAddrV4::from_str("127.0.0.1:1337").unwrap().into()),
     };
     let test_vec = bt_bencode::to_vec(&test).unwrap();
-    println!("{}", String::from_utf8_lossy(&test_vec));
+    println!("TESTVEC {}", safe_string_from_slice(&test_vec));
     let test_out = bt_bencode::from_slice::<SocketAddrWrapper>(&test_vec).unwrap();
     println!("{:?}", test_out);
     assert_eq!(test, test_out);
@@ -101,8 +101,16 @@ pub fn addr_wrap() {
         ),
     };
     let test_vec = bt_bencode::to_vec(&testv6).unwrap();
-    println!("{}", String::from_utf8_lossy(&test_vec));
+    println!("TESTVEC: {}", safe_string_from_slice(&test_vec));
     let test_out = bt_bencode::from_slice::<SocketAddrWrapper>(&test_vec).unwrap();
     println!("{:?}", test_out);
     assert_eq!(testv6, test_out);
+}
+
+#[test]
+pub fn ping_response() {
+    let buf = base64::decode("ZDE6cmQyOmlkMjA6es6LsAHqL6S93sAyV+y8t2mzqLdlMTp0Nzp0ZXN0aW5nMTp2NDpsdA2AMTp5MTpyZQ==").unwrap();
+    println!("MESSAGE: {}", safe_string_from_slice(&buf));
+    let msg = bt_bencode::from_slice::<Message>(&buf).unwrap();
+    println!("{:?}", msg);
 }

@@ -1,8 +1,8 @@
-mod error;
-mod nodes;
-mod response;
-mod socket_addr_wrapper;
-mod u160_serde;
+pub(crate) mod error;
+pub(crate) mod nodes;
+pub(crate) mod response;
+pub(crate) mod socket_addr_wrapper;
+pub(crate) mod u160_serde;
 mod tests;
 use crate::{dht_node::{self, DhtNode, IPV4_DHT_NODE_BYTES_LEN}, u160::U160};
 use error::Error;
@@ -182,4 +182,9 @@ pub struct MessageArgsBep44 {
     #[serde(default)]
     #[serde(with = "serde_bytes")]
     pub sig: Option<Vec<u8>>,
+}
+
+
+pub fn safe_string_from_slice(bytes:&[u8]) -> String {
+    bytes.iter().map(|c|format!("{:?}", *c as char).replace("'","")).collect::<String>()
 }
