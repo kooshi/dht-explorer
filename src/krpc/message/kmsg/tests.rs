@@ -8,12 +8,15 @@ use std::{
 
 #[test]
 pub fn find_node() {
-    let msg = bt_bencode::from_slice::<Message>(b"d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();
+    let msg = bt_bencode::from_slice::<KMessage>(b"d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();
     println!("{:?}", msg);
     assert_eq!(msg.message_type, Y_QUERY);
     assert_eq!(msg.transaction_id, "aa");
     assert_eq!(msg.query_method.unwrap(), Q_FIND_NODE);
-    assert_eq!(msg.arguments.as_ref().unwrap().id, U160::from_be_bytes(b"abcdefghij0123456789"));
+    assert_eq!(
+        msg.arguments.as_ref().unwrap().id,
+        U160::from_be_bytes(b"abcdefghij0123456789")
+    );
     assert_eq!(
         msg.arguments.as_ref().unwrap().target.unwrap(),
         U160::from_be_bytes(b"mnopqrstuvwxyz123456")
@@ -22,14 +25,17 @@ pub fn find_node() {
 
 #[test]
 pub fn response() {
-    let msg = bt_bencode::from_slice::<Message>(
+    let msg = bt_bencode::from_slice::<KMessage>(
         b"d1:rd2:id20:0123456789abcdefghij5:nodes9:def456...e1:t2:aa1:y1:re",
     )
     .unwrap();
     println!("{:?}", msg);
     assert_eq!(msg.message_type, Y_RESPONSE);
     assert_eq!(msg.transaction_id, "aa");
-    assert_eq!(msg.response.as_ref().unwrap().id, U160::from_be_bytes(b"0123456789abcdefghij"));
+    assert_eq!(
+        msg.response.as_ref().unwrap().id,
+        U160::from_be_bytes(b"0123456789abcdefghij")
+    );
 }
 
 #[test]
@@ -66,7 +72,7 @@ pub fn error() {
     println!("{:?}", error);
     assert_eq!(test_error, error);
 
-    let mut test_msg: Message = Default::default();
+    let mut test_msg: KMessage = Default::default();
     test_msg.message_type = Y_ERROR.to_string();
     test_msg.transaction_id = "aa".to_string();
     test_msg.error = Some(error::Error(201, "A Generic Error Ocurred".to_string()));
@@ -75,7 +81,7 @@ pub fn error() {
     let test_error = bt_bencode::to_vec(&test_msg).unwrap();
     println!("TESTERROR: {}", safe_string_from_slice(&test_error));
 
-    let err_message = bt_bencode::from_slice::<Message>(&test_error).unwrap();
+    let err_message = bt_bencode::from_slice::<KMessage>(&test_error).unwrap();
     println!("{:?}", err_message);
     assert_eq!(err_message, test_msg);
     assert_eq!(err_message.message_type, Y_ERROR);
@@ -111,20 +117,23 @@ pub fn addr_wrap() {
 pub fn find_nodes_response() {
     let buf = base64::decode("ZDE6cmQyOmlkMjA6es6LsAHqL6S93sAyV+y8t2mzqLc1Om5vZGVzMjA4Ohxv57KlTw7ylJm/nb9dlzxDiGb4Xhec08jVHHzKfICCRyerOHPZ5RFX4l8ZVS8Fh7SuyNUt0T6IPmnhch1HBIiumvC3UEJwikgVERrB2C4aUVB3Ct3idsofBy76tWEIvANLwRf6yMfYPMf1EUymrcebpxptH/y4+oL2pppV5GYISj8Ap1bzrrZLAN16RBnANuNDBmZk67mdoUT3cSXUhlwwWTbCY1v+OeOzxg8Ukr35w9ElOsjVHXRLocGoVFTZAfvTeZ5szKs2kjBOUfyP2P9lMTp0Nzp0ZXN0aW5nMTp2NDpsdA2AMTp5MTpyZQ==").unwrap();
     println!("MESSAGE: {}", safe_string_from_slice(&buf));
-    let msg = bt_bencode::from_slice::<Message>(&buf).unwrap();
+    let msg = bt_bencode::from_slice::<KMessage>(&buf).unwrap();
     println!("{:?}", msg);
 }
 
 #[test]
 pub fn ping_response_plus_data() {
-    let buf = base64::decode("ZDE6cmQyOmlkMjA6es6LsAHqL6S93sAyV+y8t2mzqLdlMTp0Nzp0ZXN0aW5nMTp2NDpsdA2AMTp5MTpyZQ==").unwrap();
+    let buf = base64::decode(
+        "ZDE6cmQyOmlkMjA6es6LsAHqL6S93sAyV+y8t2mzqLdlMTp0Nzp0ZXN0aW5nMTp2NDpsdA2AMTp5MTpyZQ==",
+    )
+    .unwrap();
     println!("MESSAGE: {}", safe_string_from_slice(&buf));
-    let mut msg = bt_bencode::from_slice::<Message>(&buf).unwrap();
+    let mut msg = bt_bencode::from_slice::<KMessage>(&buf).unwrap();
     msg.response.as_mut().unwrap().bep44.v = Some(b"HELLOWORLD".to_vec());
 
     let buf = bt_bencode::to_vec(&msg).unwrap();
     println!("MESSAGE: {}", safe_string_from_slice(&buf));
-    
-    let msg = bt_bencode::from_slice::<Message>(&buf).unwrap();
+
+    let msg = bt_bencode::from_slice::<KMessage>(&buf).unwrap();
     println!("{:?}", msg);
 }

@@ -20,5 +20,5 @@ pub struct Opt {
     pub public_address: String,
 
     #[structopt(long)]
-    pub target_address:String,
+    pub target_address: String,
 }

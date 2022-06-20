@@ -1,18 +1,33 @@
 pub(crate) mod error;
 pub(crate) mod nodes;
 pub(crate) mod response;
-pub(crate) mod socket_addr_wrapper;
 pub(crate) mod serde_extra;
+pub(crate) mod socket_addr_wrapper;
 mod tests;
-use crate::{dht_node::{self, DhtNode, IPV4_DHT_NODE_BYTES_LEN}, u160::U160};
+use crate::{
+    dht_node::{self, DhtNode, IPV4_DHT_NODE_BYTES_LEN},
+    u160::U160,
+};
 use error::Error;
 use nodes::CompactIPv4NodeInfo;
-use response::Response;
-use serde::{Serialize,Deserialize, Deserializer};
+use response::KResponse;
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_derive::{Deserialize, Serialize};
 use socket_addr_wrapper::SocketAddrWrapper;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use typed_builder::TypedBuilder;
-use std::{net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}};
+
+pub const Q_ANNOUNCE_PEER: &'static str = "announce_peer";
+pub const Q_PING: &'static str = "ping";
+pub const Q_FIND_NODE: &'static str = "find_node";
+pub const Q_GET_PEERS: &'static str = "get_peers";
+//BEP44
+pub const Q_PUT: &'static str = "put";
+pub const Q_GET: &'static str = "get";
+
+pub const Y_QUERY: &'static str = "q";
+pub const Y_RESPONSE: &'static str = "r";
+pub const Y_ERROR: &'static str = "e";
 
 // Msg represents messages that nodes in the network send to each other as specified by the protocol.
 // They are also referred to as the KRPC messages.
@@ -27,7 +42,7 @@ use std::{net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}};
 // may be correlated with multiple queries to the same node. The transaction ID should be encoded as a short string of binary numbers, typically 2 characters are enough as they cover 2^16 outstanding queries. The other key contained in every KRPC message is "y" with a single character value describing the type of message. The value of the "y" key is one of "q" for query, "r" for response, or "e" for error.
 // 3 message types:  QUERY, RESPONSE, ERROR
 #[derive(TypedBuilder, Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct Message {
+pub struct KMessage {
     // required: transaction ID
     #[serde(rename = "t")]
     pub transaction_id: String,
@@ -52,7 +67,7 @@ pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "r")]
-    pub response: Option<Response>,
+    pub response: Option<KResponse>,
 
     // ERROR type only
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,54 +94,13 @@ pub struct Message {
     #[serde(default)]
     #[serde(with = "serde_bytes")]
     #[serde(rename = "v")]
-    pub version: Option<Vec<u8>>
+    pub version: Option<Vec<u8>>,
 }
-
-//TODO: add enum support to bt_bencode
-//      or fix tuple bugs in serde_bencode or serde_bencoded
-
-static Q_ANNOUNCE_PEER: &'static str = "announce_peer";
-static Q_PING: &'static str = "ping";
-static Q_FIND_NODE: &'static str = "find_node";
-static Q_GET_PEERS: &'static str = "get_peers";
-//BEP44
-static Q_PUT: &'static str = "put";
-static Q_GET: &'static str = "get";
-
-static Y_QUERY: &'static str = "q";
-static Y_RESPONSE: &'static str = "r";
-static Y_ERROR: &'static str = "e";
-
-// #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-// #[serde(rename_all = "snake_case")]
-// pub enum QueryMethod {
-//     Ping,
-//     FindNode,
-//     GetPeers,
-//     AnnouncePeer,
-//     Put,
-//     Get
-// }
-
-// #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-// pub enum MessageType {
-//     #[serde(rename = "q")]
-//     Query(QueryMethod),
-//     #[serde(rename = "r")]
-//     Response,
-//     #[serde(rename = "e")]
-//     Error
-// }
-// impl Default for MessageType {
-//     fn default() -> Self {
-//         Self::Query(QueryMethod::Ping)
-//     }
-// }
 
 // MsgArgs are the query arguments.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct MessageArgs {
-    pub id: U160,     // ID of the querying Node
+    pub id: U160, // ID of the querying Node
 
     // ID of the node sought
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -156,7 +130,7 @@ pub struct MessageArgs {
     pub info_hash: Option<U160>,
 
     #[serde(flatten)]
-    pub bep44:MessageArgsBep44,
+    pub bep44: MessageArgsBep44,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -164,7 +138,8 @@ pub struct MessageArgsBep44 {
     // Data stored in a put message (encoded size < 1000)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    pub v: Option<String>,
+    #[serde(with = "serde_bytes")]
+    pub v: Option<Vec<u8>>,
 
     // Seq of a mutable msg
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -194,7 +169,9 @@ pub struct MessageArgsBep44 {
     pub sig: Option<Vec<u8>>,
 }
 
-
-pub fn safe_string_from_slice(bytes:&[u8]) -> String {
-    bytes.iter().map(|c|format!("{:?}", *c as char).replace("'","")).collect::<String>()
+pub fn safe_string_from_slice(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|c| format!("{:?}", *c as char).replace("'", ""))
+        .collect::<String>()
 }

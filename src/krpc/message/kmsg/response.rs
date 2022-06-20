@@ -2,7 +2,7 @@ use super::*;
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct Response {
+pub struct KResponse {
     // ID of the querying node
     pub id: U160,
 
@@ -24,11 +24,11 @@ pub struct Response {
 
     #[serde(flatten)]
     #[serde(default)]
-    pub bep44: ResponseBep44,
+    pub bep44: KResponseBep44,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct ResponseBep44 {
+pub struct KResponseBep44 {
     // Data stored in a put message (encoded size < 1000)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
@@ -53,13 +53,12 @@ pub struct ResponseBep44 {
     pub sig: Option<Vec<u8>>,
 }
 
-
 pub struct ResponseBep51 {
     //TODO https://github.com/anacrolix/dht/blob/master/krpc/msg.go
-    //     https://www.bittorrent.org/beps/bep_0051.html
+//     https://www.bittorrent.org/beps/bep_0051.html
 }
 
 pub struct ResponseBep33 {
     //TODO https://github.com/anacrolix/dht/blob/master/krpc/msg.go
-    //     https://www.bittorrent.org/beps/bep_0033.html
+//     https://www.bittorrent.org/beps/bep_0033.html
 }

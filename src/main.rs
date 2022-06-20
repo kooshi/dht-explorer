@@ -14,7 +14,7 @@ use structopt::StructOpt;
 use tokio;
 use tokio::net::UdpSocket;
 
-use crate::krpc::kmsg::socket_addr_wrapper::SocketAddrWrapper;
+//use crate::krpc::kmsg::socket_addr_wrapper::SocketAddrWrapper;
 // use rand::prelude::SliceRandom;
 // use disjoint_set::DisjointSet;
 // use std::ops::Index;
@@ -43,27 +43,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = UdpSocket::bind(opt.bind_address).await?;
     socket.connect(opt.target_address).await?;
 
-    let mut msg:krpc::kmsg::Message = Default::default();
-    msg.arguments = Some(Default::default());
-    msg.read_only = Some(true);
-    msg.query_method = Some("find_node".to_string());
-    msg.message_type = "q".to_string();
-    msg.transaction_id = "testing".to_string();
-    msg.peer_ip = Some(SocketAddrWrapper{socket_addr: Some(SocketAddrV4::from_str(&opt.public_address).unwrap().into())});
-    msg.arguments.as_mut().unwrap().id = u160::U160::rand();
-    msg.arguments.as_mut().unwrap().target = Some(u160::U160::rand());
+    // let mut msg:krpc::kmsg::KMessage = Default::default();
+    // msg.arguments = Some(Default::default());
+    // msg.read_only = Some(true);
+    // msg.query_method = Some("find_node".to_string());
+    // msg.message_type = "q".to_string();
+    // msg.transaction_id = "testing".to_string();
+    // msg.peer_ip = Some(SocketAddrWrapper{socket_addr: Some(SocketAddrV4::from_str(&opt.public_address).unwrap().into())});
+    // msg.arguments.as_mut().unwrap().id = u160::U160::rand();
+    // msg.arguments.as_mut().unwrap().target = Some(u160::U160::rand());
 
-    let msg = bt_bencode::to_vec(&msg).unwrap();
-    println!("SENDING: {}", krpc::kmsg::safe_string_from_slice(&msg));
-    socket.send(&msg).await?;
+    // let msg = bt_bencode::to_vec(&msg).unwrap();
+    // println!("SENDING: {}", krpc::kmsg::safe_string_from_slice(&msg));
+    // socket.send(&msg).await?;
 
-    let mut buf = [0; 1024];
-    let len = socket.recv(&mut buf).await?;
-    println!("**************************************************");
-    println!("RECIEVED: {}", krpc::kmsg::safe_string_from_slice(&buf[..len]));
-    println!("Base64: {}", base64::encode(&buf[..len]));
-    println!();
-    let result = bt_bencode::from_slice::<krpc::kmsg::Message>(&buf[..len]).unwrap();
-    println!("{:#?}",result);
+    // let mut buf = [0; 1024];
+    // let len = socket.recv(&mut buf).await?;
+    // println!("**************************************************");
+    // println!("RECIEVED: {}", krpc::kmsg::safe_string_from_slice(&buf[..len]));
+    // println!("Base64: {}", base64::encode(&buf[..len]));
+    // println!();
+    // let result = bt_bencode::from_slice::<krpc::kmsg::KMessage>(&buf[..len]).unwrap();
+    // println!("{:#?}",result);
     Ok(())
 }
