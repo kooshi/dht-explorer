@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, error::Error, sync::Arc};
+use std::{net::SocketAddr, error::Error, sync::Arc, ops::DerefMut};
 use simple_error::bail;
 use tokio::{net::UdpSocket, sync::Mutex};
 use crate::{routing_table::bucket::Bucket, u160::U160, dht_node::DhtNode};
@@ -12,6 +12,7 @@ pub(crate) mod message;
 pub struct KrpcService{
     socket:Arc<UdpSocket>,
     routes:Mutex<Bucket>,
+    //todo hashmap outstanding queries
     _handle:RemoteHandle<()>
 }
 
@@ -27,7 +28,7 @@ impl KrpcService {
     }
 
     async fn recv(socket:Arc<UdpSocket>) {
-        let mut buffer = [0_u8;u16::MAX as usize];
+        let mut buffer = Box::new([0_u8;u16::MAX as usize]);
         loop {
             let result = socket.readable().await;
             if result.is_err() {
@@ -35,12 +36,12 @@ impl KrpcService {
             }
             // Try to recv data, this may still fail with `WouldBlock`
             // if the readiness event is a false positive.
-            match socket.try_recv(&mut buffer) {
-                Ok(n) => {
+            match socket.try_recv_from(buffer.deref_mut()) {
+                Ok((n, from)) => {
                     let slice = &buffer[..n];
                     debug!("UDP DATAGRAM: {}", utils::safe_string_from_slice(slice));
                     debug!("      BASE64: {}", base64::encode(slice));
-                    let message = Message::from_bytes(slice);
+                    let message = Message::receive(slice, from);
                     if let Ok(message) = message {
                         tokio::spawn(async move { KrpcService::handle_received(message).await });
                     } else {
@@ -57,14 +58,16 @@ impl KrpcService {
     }
 
     async fn handle_received(message:Message) {
-        trace!("Handling Message: {:?}", message);
+        info!("Received {} [{}] from {}", message.kind(), message.transaction_id(), message.received_from_addr().unwrap());
+        debug!("Received: {:?}", message);
     }
 
     pub async fn send_message(&self, message:Message) {
+        info!("Sending {} [{}] to {}",message.kind(),message.transaction_id(), message.destination_addr().unwrap());
+        debug!("Sending: {:?}", message);
+
         let slice = &message.to_bytes();
         let addr = message.destination_addr().unwrap();
-        debug!("SENDING: {}", utils::safe_string_from_slice(&slice));
-        debug!("     TO: {:?}", addr);
         self.socket.send_to(&slice, addr).await.unwrap();
     }
 }

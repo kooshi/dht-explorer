@@ -57,16 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{:?}",msg);
     krpc.send_message(msg).await;
-
-    // let mut buf = [0; 1024];
-    // let len = socket.recv(&mut buf).await?;
-    // println!("**************************************************");
-    // println!("RECIEVED: {}", utils::safe_string_from_slice(&buf[..len]));
-    // println!("Base64: {}", base64::encode(&buf[..len]));
-    // println!();
-    // let result = bt_bencode::from_slice::<krpc::message::kmsg::KMessage>(&buf[..len]).unwrap();
-    // println!("{:#?}",result);
-    // let result = Message::from_kmsg(result);
-    // println!("{:#?}",result);
+    
+    tokio::signal::ctrl_c().await.expect("failed to listen for event");
     Ok(())
 }

@@ -1,5 +1,5 @@
 pub(crate) mod kmsg;
-mod message_serde;
+mod message_impl;
 use kmsg::*;
 use simple_error::{bail, simple_error, SimpleError};
 use std::{error::Error, net::SocketAddr, ops::Deref};
@@ -21,6 +21,8 @@ pub struct Message {
     kind: MessageKind,
     #[builder(setter(strip_bool))]
     read_only: bool,
+    #[builder(default, setter(skip))]
+    received_from_addr: Option<SocketAddr>,
 }
 
 impl Message {
@@ -28,6 +30,8 @@ impl Message {
     pub fn transaction_id(&self) -> &str {self.transaction_id.as_str()}
     pub fn destination_addr(&self) -> Option<SocketAddr> {self.destination_addr}
     pub fn kind(&self) -> &MessageKind {&self.kind}
+    pub fn received_from_addr(&self) -> Option<SocketAddr> {self.received_from_addr}
+
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,7 +61,7 @@ pub enum QueryMethod {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResponseKind {
     Ok,
-    KClosest(Vec<DhtNode>),
+    KNearest(Vec<DhtNode>),
     Peers(Vec<SocketAddr>),
     Data(kmsg::response::KResponseBep44),
 }

@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use super::kmsg::KMessage;
 use super::*;
 use kmsg;
@@ -23,6 +25,10 @@ impl<'de> Deserialize<'de> for Message {
 }
 
 impl Message {
+    pub fn receive(bytes:&[u8], from:SocketAddr) -> Result<Self, SimpleError> {
+        Self::from_bytes(bytes).map(|mut s|{s.received_from_addr = Some(from);s})
+    }
+
     pub fn from_bytes(bytes:&[u8]) -> Result<Self, SimpleError> {
         bt_bencode::from_slice(bytes).map_err(|e|SimpleError::with("error getting message from bytes", e))
     }
@@ -67,7 +73,7 @@ impl Message {
                 let mut response = response::KResponse::builder().id(self.sender_id).build();
                 match r {
                     ResponseKind::Ok => (),
-                    ResponseKind::KClosest(nodes) => response.nodes = Some(CompactIPv4NodeInfo { dht_nodes: nodes.clone()}),
+                    ResponseKind::KNearest(nodes) => response.nodes = Some(CompactIPv4NodeInfo { dht_nodes: nodes.clone()}),
                     ResponseKind::Peers(peers) => response.values = Some(peers.iter().map(|p|socket_addr_wrapper::SocketAddrWrapper{ socket_addr: Some(*p)}).collect()),
                     ResponseKind::Data(data) => response.bep44 = data.clone(),
                 };
@@ -109,7 +115,7 @@ impl Message {
                 if let Some(response) = kmsg.response {
                     own_id = response.id;
                     MessageKind::Response(if let Some(nodes) = response.nodes {
-                        ResponseKind::KClosest(nodes.dht_nodes)
+                        ResponseKind::KNearest(nodes.dht_nodes)
                     } else if let Some(peers) = response.values {
                         ResponseKind::Peers(peers.iter().filter_map(|p| p.socket_addr).collect())
                     } else if response.bep44.v.is_some() {
@@ -125,6 +131,7 @@ impl Message {
         };
 
         Ok(Message {
+            received_from_addr: None,
             transaction_id: kmsg.transaction_id,
             sender_id: own_id,
             kind,
@@ -139,6 +146,28 @@ impl Message {
                 false
             },
         })
+    }
+}
+
+impl Display for MessageKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageKind::Query(q) => match q {
+                QueryMethod::Ping => write!(f,"Ping"),
+                QueryMethod::FindNode(_) => write!(f,"Find Node Query"),
+                QueryMethod::GetPeers(_) => write!(f,"Get Peers Query"),
+                QueryMethod::AnnouncePeer(_) => write!(f,"Announce Query"),
+                QueryMethod::Put(_) => write!(f,"Put Data Query"),
+                QueryMethod::Get => write!(f,"Get Data Query"),
+            },
+            MessageKind::Response(r) => match r {
+                ResponseKind::Ok => write!(f,"Ok Response"),
+                ResponseKind::KNearest(_) => write!(f,"K Nearest Response"),
+                ResponseKind::Peers(_) => write!(f,"Peer Response"),
+                ResponseKind::Data(_) => write!(f,"Data Response"),
+            },
+            MessageKind::Error(n, _) => write!(f,"Error {}",n),
+        }
     }
 }
 
