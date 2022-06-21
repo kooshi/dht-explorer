@@ -1,4 +1,4 @@
-mod dht_node;
+pub(crate) mod dht_node;
 mod krpc;
 mod options;
 mod routing_table;
@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .module(module_path!())
         .quiet(opt.quiet)
         .verbosity(opt.verbose)
-        .timestamp(opt.ts.unwrap_or(stderrlog::Timestamp::Off))
+        .timestamp(opt.timestamps.unwrap_or(stderrlog::Timestamp::Off))
         .init()?;
 
     match max_level() {
@@ -34,7 +34,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         id: U160::rand(),
         addr: SocketAddrV4::from_str(&opt.bind_address).unwrap().into(),
     };
-    let krpc = krpc::KrpcService::new(host_node).await.unwrap();
+    let krpc = krpc::KrpcService::new(host_node, opt.timeoutms)
+        .await
+        .unwrap();
 
     let data = MessageData::builder()
         .read_only()

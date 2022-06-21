@@ -99,7 +99,6 @@ dependencies = [
  "bt_bencode",
  "chrono",
  "futures",
- "futures-util",
  "hex",
  "log",
  "rand",

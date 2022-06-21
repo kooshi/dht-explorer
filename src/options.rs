@@ -10,8 +10,8 @@ pub struct Opt {
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     pub verbose: usize,
     /// Timestamp (sec, ms, ns, none)
-    #[structopt(short = "t", long = "timestamp")]
-    pub ts: Option<stderrlog::Timestamp>,
+    #[structopt(long)]
+    pub timestamps: Option<stderrlog::Timestamp>,
 
     #[structopt(long)]
     pub bind_address: String,
@@ -21,4 +21,7 @@ pub struct Opt {
 
     #[structopt(long)]
     pub target_address: String,
+
+    #[structopt(long, default_value = "500")]
+    pub timeoutms: u16,
 }

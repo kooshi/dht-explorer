@@ -2,17 +2,19 @@ use self::message::{IMessage, Message, Query};
 use crate::utils;
 use crate::{dht_node::DhtNode, routing_table::bucket::Bucket};
 use chrono::{DateTime, Utc};
-use futures::future::RemoteHandle;
+use futures::future::{FutureExt, RemoteHandle};
 use log::*;
 use std::{error::Error, ops::DerefMut, sync::Arc};
 use tokio::sync::oneshot;
 use tokio::{net::UdpSocket, sync::Mutex};
+use tokio::{select, time, time::Duration};
 
 pub(crate) mod message;
 
 pub struct KrpcService {
     state: Arc<State>,
-    _handle: RemoteHandle<()>,
+    recv_handle: RemoteHandle<()>,
+    timeout_ms: u16,
 }
 struct State {
     socket: UdpSocket,
@@ -26,7 +28,7 @@ struct OutstandingQuery {
 }
 
 impl KrpcService {
-    pub async fn new(host_node: DhtNode) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(host_node: DhtNode, timeout_ms: u16) -> Result<Self, Box<dyn Error>> {
         let socket = UdpSocket::bind(host_node.addr).await?;
         let routes = Mutex::new(Bucket::root(host_node, 8));
         let outstanding_queries = Mutex::new(Vec::with_capacity(20));
@@ -35,10 +37,14 @@ impl KrpcService {
             routes,
             outstanding_queries,
         });
-        let (job, _handle) =
-            futures_util::future::FutureExt::remote_handle(KrpcService::recv(state.clone()));
 
-        let new = KrpcService { state, _handle };
+        let (job, recv_handle) = FutureExt::remote_handle(KrpcService::recv(state.clone()));
+
+        let new = KrpcService {
+            state,
+            recv_handle,
+            timeout_ms,
+        };
         tokio::spawn(job);
 
         Ok(new)
@@ -123,7 +129,26 @@ impl KrpcService {
             });
         }
         debug!("Query [{}] added to outstanding", query.transaction_id());
-        self.send_message(query.to_message()).await;
-        return_rx.await
+        let message = query.to_message();
+        let clone_data = message.data().clone();
+        self.send_message(message).await;
+
+        let sleep = time::sleep(Duration::from_millis(self.timeout_ms.into()));
+        tokio::select! {
+            m = return_rx => {m}
+            _ = sleep => {
+                self.remove_from_queue(clone_data.transaction_id()).await;
+                info!("Query [{}] timed out", clone_data.transaction_id());
+                Ok(Message::Error(message::Error::new(201,"Timeout".to_string(), clone_data)))
+            }
+        }
+    }
+
+    async fn remove_from_queue(&self, id: &str) {
+        trace!("Removing [{}] from queue", id);
+        let mut queue = self.state.outstanding_queries.lock().await;
+        if let Some(index) = queue.iter().position(|q| q.transaction_id == id) {
+            queue.remove(index);
+        }
     }
 }
