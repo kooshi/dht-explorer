@@ -4,7 +4,7 @@ mod options;
 mod routing_table;
 mod u160;
 mod utils;
-use krpc::message::{Message, MessageKind, QueryMethod};
+use krpc::message::{Message, MessageData, Query, QueryMethod};
 use log::{max_level, *};
 use std::net::SocketAddrV4;
 use std::str::FromStr;
@@ -36,19 +36,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let krpc = krpc::KrpcService::new(host_node).await.unwrap();
 
-    let msg = Message::builder()
+    let data = MessageData::builder()
         .read_only()
         .sender_id(U160::rand())
         .transaction_id("testing".to_string())
         .destination_addr(SocketAddrV4::from_str(&opt.target_address).unwrap().into())
-        .kind(MessageKind::Query(QueryMethod::Ping))
-        //.kind(MessageKind::Query(QueryMethod::FindNode(U160::rand())))
-        //.kind(MessageKind::Query(QueryMethod::GetPeers(U160::rand())))
         .build();
+    let msg = Query::new(QueryMethod::Ping, data);
 
     println!("{:?}", msg);
-    krpc.send_with_continue(msg, Box::new(|m| println!("Success! {}", m.kind())))
-        .await;
+    let response = krpc.query(msg).await?;
+
+    println!("GOT IT {:?}", response);
+
+    // krpc.send_with_continue(msg, Box::new(|m| println!("Success! {}", m.kind())))
+    //     .await;
 
     tokio::signal::ctrl_c()
         .await

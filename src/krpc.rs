@@ -1,10 +1,11 @@
-use self::message::Message;
+use self::message::{IMessage, Message, Query};
 use crate::utils;
 use crate::{dht_node::DhtNode, routing_table::bucket::Bucket};
 use chrono::{DateTime, Utc};
 use futures::future::RemoteHandle;
 use log::*;
 use std::{error::Error, ops::DerefMut, sync::Arc};
+use tokio::sync::oneshot;
 use tokio::{net::UdpSocket, sync::Mutex};
 
 pub(crate) mod message;
@@ -21,7 +22,7 @@ struct State {
 struct OutstandingQuery {
     transaction_id: String,
     timestamp: DateTime<Utc>,
-    continue_with: Box<dyn Fn(Message) + Send + Sync>,
+    return_value: oneshot::Sender<Message>,
 }
 
 impl KrpcService {
@@ -79,20 +80,20 @@ impl KrpcService {
     async fn handle_received(message: Message, state: Arc<State>) {
         info!(
             "Received {} [{}] from {}",
-            message.kind(),
-            message.transaction_id(),
-            message.received_from_addr().unwrap()
+            message,
+            message.data().transaction_id(),
+            message.data().received_from_addr().unwrap()
         );
         debug!("Received: {:?}", message);
         {
             let mut queue = state.outstanding_queries.lock().await;
             if let Some(index) = queue
                 .iter()
-                .position(|q| q.transaction_id == message.transaction_id())
+                .position(|q| q.transaction_id == message.data().transaction_id())
             {
                 let q = queue.remove(index);
-                debug!("Continue for [{}] executing", message.transaction_id());
-                tokio::spawn(async move { (q.continue_with)(message) });
+                debug!("Returning value for [{}]", message.data().transaction_id());
+                q.return_value.send(message);
             }
         }
     }
@@ -100,34 +101,29 @@ impl KrpcService {
     pub async fn send_message(&self, message: Message) {
         info!(
             "Sending {} [{}] to {}",
-            message.kind(),
-            message.transaction_id(),
-            message.destination_addr().unwrap()
+            message,
+            message.data().transaction_id(),
+            message.data().destination_addr().unwrap()
         );
         debug!("Sending: {:?}", message);
 
         let slice = &message.to_bytes();
-        let addr = message.destination_addr().unwrap();
+        let addr = message.data().destination_addr().unwrap();
         self.state.socket.send_to(&slice, addr).await.unwrap();
     }
 
-    pub async fn send_with_continue(
-        &self,
-        message: Message,
-        continue_with: Box<dyn Fn(Message) + Sync + Send>,
-    ) {
+    pub async fn query(&self, query: Query) -> Result<Message, oneshot::error::RecvError> {
+        let (return_tx, return_rx) = oneshot::channel();
         {
             let mut queue = self.state.outstanding_queries.lock().await;
             queue.push(OutstandingQuery {
-                transaction_id: message.transaction_id().to_string(),
+                transaction_id: query.transaction_id().to_string(),
                 timestamp: chrono::offset::Utc::now(),
-                continue_with,
+                return_value: return_tx,
             });
-            debug!(
-                "Query [{}] continuation added to queue",
-                message.transaction_id()
-            );
         }
-        self.send_message(message).await;
+        debug!("Query [{}] added to outstanding", query.transaction_id());
+        self.send_message(query.to_message()).await;
+        return_rx.await
     }
 }
