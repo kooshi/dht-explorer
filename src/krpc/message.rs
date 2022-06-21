@@ -26,12 +26,21 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn sender_id(&self) -> U160 {self.sender_id}
-    pub fn transaction_id(&self) -> &str {self.transaction_id.as_str()}
-    pub fn destination_addr(&self) -> Option<SocketAddr> {self.destination_addr}
-    pub fn kind(&self) -> &MessageKind {&self.kind}
-    pub fn received_from_addr(&self) -> Option<SocketAddr> {self.received_from_addr}
-
+    pub fn sender_id(&self) -> U160 {
+        self.sender_id
+    }
+    pub fn transaction_id(&self) -> &str {
+        self.transaction_id.as_str()
+    }
+    pub fn destination_addr(&self) -> Option<SocketAddr> {
+        self.destination_addr
+    }
+    pub fn kind(&self) -> &MessageKind {
+        &self.kind
+    }
+    pub fn received_from_addr(&self) -> Option<SocketAddr> {
+        self.received_from_addr
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

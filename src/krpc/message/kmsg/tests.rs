@@ -139,8 +139,11 @@ pub fn ping_response_plus_data() {
 }
 
 #[test]
-pub fn error_response(){
-    let buf = base64::decode("ZDE6ZWxpMjAzZTMwOlRyYW5zYWN0aW9uIElEIGxlbmd0aCB0b28gbG9uZ2UxOnY0Omx0DYAxOnkxOmVl").unwrap();
+pub fn error_response() {
+    let buf = base64::decode(
+        "ZDE6ZWxpMjAzZTMwOlRyYW5zYWN0aW9uIElEIGxlbmd0aCB0b28gbG9uZ2UxOnY0Omx0DYAxOnkxOmVl",
+    )
+    .unwrap();
     println!("MESSAGE: {}", utils::safe_string_from_slice(&buf));
     let msg = bt_bencode::from_slice::<KMessage>(&buf).unwrap();
     println!("{:?}", msg);

@@ -7,13 +7,13 @@ mod utils;
 //mod disjoint_set;
 mod options;
 use core::slice;
-use std::{net::SocketAddrV4};
+use std::net::SocketAddrV4;
 use std::str::FromStr;
 
+use krpc::message::{Message, MessageKind, QueryMethod, ResponseKind};
 use log::{max_level, *};
 use structopt::StructOpt;
 use tokio::net::UdpSocket;
-use krpc::message::{Message,MessageKind,QueryMethod,ResponseKind};
 use u160::U160;
 
 //use crate::krpc::kmsg::socket_addr_wrapper::SocketAddrWrapper;
@@ -42,22 +42,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         LevelFilter::Off => (),
     };
 
-    let host_node = dht_node::DhtNode { id: U160::rand(), addr: SocketAddrV4::from_str(&opt.bind_address).unwrap().into() };
+    let host_node = dht_node::DhtNode {
+        id: U160::rand(),
+        addr: SocketAddrV4::from_str(&opt.bind_address).unwrap().into(),
+    };
     let krpc = krpc::KrpcService::new(host_node).await.unwrap();
 
     let msg = Message::builder()
-    .read_only()
-    .sender_id(U160::rand())
-    .transaction_id("testing".to_string())
-    .destination_addr(SocketAddrV4::from_str(&opt.target_address).unwrap().into())
-    .kind(MessageKind::Query(QueryMethod::Ping))
-    //.kind(MessageKind::Query(QueryMethod::FindNode(U160::rand())))
-    //.kind(MessageKind::Query(QueryMethod::GetPeers(U160::rand())))
-    .build();
+        .read_only()
+        .sender_id(U160::rand())
+        .transaction_id("testing".to_string())
+        .destination_addr(SocketAddrV4::from_str(&opt.target_address).unwrap().into())
+        .kind(MessageKind::Query(QueryMethod::Ping))
+        //.kind(MessageKind::Query(QueryMethod::FindNode(U160::rand())))
+        //.kind(MessageKind::Query(QueryMethod::GetPeers(U160::rand())))
+        .build();
 
-    println!("{:?}",msg);
-    krpc.send_message(msg).await;
-    
-    tokio::signal::ctrl_c().await.expect("failed to listen for event");
+    println!("{:?}", msg);
+    krpc.send_with_continue(msg, Box::new(|m| println!("Success! {}", m.kind())))
+        .await;
+
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to listen for event");
     Ok(())
 }
