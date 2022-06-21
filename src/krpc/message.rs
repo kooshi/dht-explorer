@@ -1,14 +1,8 @@
 pub(crate) mod kmsg;
 mod message_impl;
-use kmsg::*;
-use simple_error::{bail, simple_error, SimpleError};
-use std::{error::Error, net::SocketAddr, ops::Deref};
+use crate::{dht_node::DhtNode, u160::U160};
+use std::net::SocketAddr;
 use typed_builder::TypedBuilder;
-
-use crate::{
-    dht_node::DhtNode,
-    u160::{self, U160},
-};
 
 use self::kmsg::nodes::CompactIPv4NodeInfo;
 
@@ -48,12 +42,6 @@ pub enum MessageKind {
     Query(QueryMethod),
     Response(ResponseKind),
     Error(u16, String),
-}
-
-impl MessageKind {
-    pub fn from_kerror(err: kmsg::error::Error) -> Self {
-        MessageKind::Error(err.0, err.1)
-    }
 }
 
 type InfoHash = U160;

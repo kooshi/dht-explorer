@@ -1,11 +1,8 @@
+use super::{kmsg::*, *};
+use serde::{de, Deserialize, Deserializer, Serialize};
+use simple_error::{bail, simple_error, SimpleError};
 use std::fmt::Display;
 
-use super::kmsg::KMessage;
-use super::*;
-use kmsg;
-use serde::de;
-use serde::ser;
-use serde::{Deserialize, Deserializer, Serialize};
 impl Serialize for Message {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -193,6 +190,12 @@ impl Display for MessageKind {
     }
 }
 
+impl MessageKind {
+    pub fn from_kerror(err: kmsg::error::Error) -> Self {
+        MessageKind::Error(err.0, err.1)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -201,7 +204,7 @@ mod test {
     #[test]
     pub fn ping() {
         let msg = Message::builder()
-            .sender_id(u160::U160::rand())
+            .sender_id(U160::rand())
             .transaction_id("test".to_string())
             .destination_addr(
                 <std::net::SocketAddrV4 as std::str::FromStr>::from_str("127.0.0.1:1337")

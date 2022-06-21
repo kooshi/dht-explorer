@@ -1,5 +1,5 @@
 use crate::u160::U160;
-use std::net::{self, IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 pub const IPV4_DHT_NODE_BYTES_LEN: usize = 26;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DhtNode {
@@ -7,10 +7,6 @@ pub struct DhtNode {
     pub addr: SocketAddr,
 }
 impl DhtNode {
-    // pub fn new() -> Self {
-    //     let (foo,addr) = net::UdpSocket::bind("127.0.0.1:3400").expect("couldn't bind to address").recv_from([0_u8;10].as_mut());
-    //     DhtNode { id:U160::new() }
-    // }
     pub fn distance(&self, other: &Self) -> U160 {
         self.id.distance(other.id)
     }

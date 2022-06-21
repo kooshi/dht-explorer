@@ -5,7 +5,6 @@ use std::{
     net::{SocketAddrV4, SocketAddrV6},
     str::FromStr,
 };
-
 #[test]
 pub fn find_node() {
     let msg = bt_bencode::from_slice::<KMessage>(b"d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();

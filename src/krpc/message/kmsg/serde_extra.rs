@@ -1,5 +1,4 @@
 use crate::u160::U160;
-use bt_bencode::value;
 use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,

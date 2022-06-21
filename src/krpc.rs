@@ -1,16 +1,10 @@
-use self::message::{kmsg::socket_addr_wrapper, Message};
+use self::message::Message;
 use crate::utils;
-use crate::{dht_node::DhtNode, routing_table::bucket::Bucket, u160::U160};
-use chrono::TimeZone;
+use crate::{dht_node::DhtNode, routing_table::bucket::Bucket};
 use chrono::{DateTime, Utc};
-use futures::{
-    future::{AbortHandle, RemoteHandle},
-    prelude::*,
-};
+use futures::future::RemoteHandle;
 use log::*;
-use simple_error::bail;
-use std::rc::Rc;
-use std::{error::Error, net::SocketAddr, ops::DerefMut, sync::Arc};
+use std::{error::Error, ops::DerefMut, sync::Arc};
 use tokio::{net::UdpSocket, sync::Mutex};
 
 pub(crate) mod message;

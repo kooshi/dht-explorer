@@ -1,7 +1,3 @@
-use std::fmt::Result;
-
-use rand::seq::index;
-
 use crate::{dht_node::DhtNode, u160::U160};
 
 const MAX_BUCKET_INDEX: u8 = 159;

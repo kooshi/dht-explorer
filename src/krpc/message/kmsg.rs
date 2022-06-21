@@ -5,7 +5,7 @@ pub(crate) mod serde_extra;
 pub(crate) mod socket_addr_wrapper;
 mod tests;
 use crate::{
-    dht_node::{self, DhtNode, IPV4_DHT_NODE_BYTES_LEN},
+    dht_node::{DhtNode, IPV4_DHT_NODE_BYTES_LEN},
     u160::U160,
 };
 use error::Error;

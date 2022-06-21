@@ -1,27 +1,15 @@
 mod dht_node;
 mod krpc;
+mod options;
 mod routing_table;
 mod u160;
 mod utils;
-
-//mod disjoint_set;
-mod options;
-use core::slice;
+use krpc::message::{Message, MessageKind, QueryMethod};
+use log::{max_level, *};
 use std::net::SocketAddrV4;
 use std::str::FromStr;
-
-use krpc::message::{Message, MessageKind, QueryMethod, ResponseKind};
-use log::{max_level, *};
 use structopt::StructOpt;
-use tokio::net::UdpSocket;
 use u160::U160;
-
-//use crate::krpc::kmsg::socket_addr_wrapper::SocketAddrWrapper;
-// use rand::prelude::SliceRandom;
-// use disjoint_set::DisjointSet;
-// use std::ops::Index;
-// use rand::Rng;
-// use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
