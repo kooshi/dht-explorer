@@ -1,6 +1,6 @@
-# DHT Exporer
+# DHT Exporer - WIP
 
-Writing an algo I don't know, in a language I barely know, referencing a language I used like once
+Implementing a Kademlia DHT Node in Rust for fun
 
 # References
 
@@ -21,10 +21,6 @@ Writing an algo I don't know, in a language I barely know, referencing a languag
 [MIT](https://choosealicense.com/licenses/mit/)
 
 ### Todo
-buckets:
-keep recently seen sorting within bucket
-update recent on add
-
 KRPC:
 
 `Ping`

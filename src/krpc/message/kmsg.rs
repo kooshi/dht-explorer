@@ -190,10 +190,3 @@ pub struct MessageArgsBep44 {
     #[builder(default, setter(strip_option))]
     pub sig: Option<Vec<u8>>,
 }
-
-pub fn safe_string_from_slice(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|c| format!("{:?}", *c as char).replace("'", ""))
-        .collect::<String>()
-}

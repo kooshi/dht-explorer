@@ -7,16 +7,16 @@ use crate::{dht_node::DhtNode, u160::U160};
 const MAX_BUCKET_INDEX: u8 = 159;
 
 #[derive(Debug)]
-pub struct Bucket<'a> {
-    host_node: &'a DhtNode,
+pub struct Bucket {
+    host_node: DhtNode,
     bucket_index: u8,
     k_size: u8,
     nodes: Vec<DhtNode>,
-    next_bucket: Option<Box<Bucket<'a>>>,
+    next_bucket: Option<Box<Bucket>>,
 }
 
-impl<'a> Bucket<'a> {
-    pub fn root(host_node: &'a DhtNode, k_size: u8) -> Self {
+impl Bucket {
+    pub fn root(host_node: DhtNode, k_size: u8) -> Self {
         Self {
             host_node,
             k_size,
@@ -135,7 +135,7 @@ mod tests {
             id: U160::empty(),
             addr: socket,
         };
-        let mut bucket = Bucket::root(&host, 8);
+        let mut bucket = Bucket::root(host, 8);
         let test_node = DhtNode {
             id: U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"),
             addr: socket,
@@ -159,7 +159,7 @@ mod tests {
             id: U160::empty(),
             addr: socket,
         };
-        let mut bucket = Bucket::root(&host, 30);
+        let mut bucket = Bucket::root(host, 30);
         for _ in 0..60 {
             bucket.add(DhtNode {
                 id: U160::rand() >> (rand::random::<u8>() % 161),
