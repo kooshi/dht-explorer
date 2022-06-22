@@ -2,10 +2,7 @@ use log::error;
 use simple_error::SimpleResult;
 
 pub fn safe_string_from_slice(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|c| format!("{:?}", *c as char).replace("'", ""))
-        .collect::<String>()
+    bytes.iter().map(|c| format!("{:?}", *c as char).replace("'", "")).collect::<String>()
 }
 
 pub trait LogErrExt {
@@ -17,6 +14,7 @@ impl<T> LogErrExt for SimpleResult<T> {
     fn log(self) -> () {
         self.log_with("");
     }
+
     fn log_with(self, s: &str) -> () {
         self.err().iter().for_each(|e| error!("{} {:?}", s, e))
     }

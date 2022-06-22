@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 pub const IPV4_DHT_NODE_BYTES_LEN: usize = 26;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DhtNode {
-    pub id: U160,
+    pub id:   U160,
     pub addr: SocketAddr,
 }
 impl DhtNode {
@@ -44,10 +44,7 @@ mod tests {
     #[test]
     fn new() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-        let host = DhtNode {
-            id: U160::rand(),
-            addr: socket,
-        };
+        let host = DhtNode { id: U160::rand(), addr: socket };
         let copy = DhtNode::ip4_from_bytes(&host.ip4_to_bytes());
         assert_eq!(host, copy);
     }

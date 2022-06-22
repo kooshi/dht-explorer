@@ -1,46 +1,46 @@
-use super::{kmsg::*, *};
+use super::{kmsg::{socket_addr_wrapper::SocketAddrWrapper, *}, *};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use simple_error::{bail, map_err_with, simple_error, SimpleResult};
 use std::fmt::Display;
 
 impl Serialize for Message {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+    where S: serde::Serializer {
         self.to_kmsg().serialize(serializer)
     }
 }
 
 impl<'de> Deserialize<'de> for Message {
     fn deserialize<D>(deserializer: D) -> Result<Message, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
+    where D: Deserializer<'de> {
         Message::from_kmsg(KMessage::deserialize(deserializer)?).map_err(|e| de::Error::custom(e))
     }
 }
 
 impl Deref for Query {
     type Target = MessageBase;
+
     fn deref(&self) -> &Self::Target {
         &self.base
     }
 }
 impl Deref for Response {
     type Target = MessageBase;
+
     fn deref(&self) -> &Self::Target {
         &self.base
     }
 }
 impl Deref for Error {
     type Target = MessageBase;
+
     fn deref(&self) -> &Self::Target {
         &self.base
     }
 }
 impl Deref for Message {
     type Target = MessageBase;
+
     fn deref(&self) -> &Self::Target {
         self.base()
     }
@@ -54,6 +54,7 @@ impl Message {
             Message::Error(Error { base, .. }) => base,
         }
     }
+
     fn base_mut(&mut self) -> &mut MessageBase {
         match self {
             Message::Query(Query { base, .. }) => base,
@@ -80,9 +81,7 @@ impl Message {
     pub fn to_kmsg(&self) -> KMessage {
         let builder = KMessage::builder()
             .transaction_id(self.transaction_id.clone())
-            .peer_ip(socket_addr_wrapper::SocketAddrWrapper {
-                socket_addr: self.destination_addr,
-            })
+            .peer_ip(socket_addr_wrapper::SocketAddrWrapper { socket_addr: self.destination_addr })
             .read_only(self.read_only);
         match &self {
             Message::Query(q) => {
@@ -115,59 +114,33 @@ impl Message {
                 let mut response = response::KResponse::builder().id(self.sender_id).build();
                 match &r.kind {
                     ResponseKind::Ok => (),
-                    ResponseKind::KNearest(nodes) => {
-                        response.nodes = Some(CompactIPv4NodeInfo {
-                            dht_nodes: nodes.clone(),
-                        })
-                    }
-                    ResponseKind::Peers(peers) => {
-                        response.values = Some(
-                            peers
-                                .iter()
-                                .map(|p| socket_addr_wrapper::SocketAddrWrapper {
-                                    socket_addr: Some(*p),
-                                })
-                                .collect(),
-                        )
-                    }
+                    ResponseKind::KNearest(nodes) =>
+                        response.nodes = Some(CompactIPv4NodeInfo { dht_nodes: nodes.clone() }),
+                    ResponseKind::Peers(peers) =>
+                        response.values =
+                            Some(peers.iter().map(|p| SocketAddrWrapper { socket_addr: Some(*p) }).collect()),
                     ResponseKind::Data(base) => response.bep44 = base.clone(),
                 };
                 builder.response(response).build()
             }
-            Message::Error(e) => builder
-                .message_type(kmsg::Y_ERROR)
-                .error(error::Error(e.code, e.description.clone()))
-                .build(),
+            Message::Error(e) =>
+                builder.message_type(kmsg::Y_ERROR).error(error::Error(e.code, e.description.clone())).build(),
         }
     }
 
     pub fn from_kmsg(kmsg: KMessage) -> SimpleResult<Self> {
         let mut base = MessageBase {
             received_from_addr: None,
-            transaction_id: kmsg.transaction_id,
-            sender_id: U160::empty(),
-            destination_addr: if let Some(wrap) = kmsg.peer_ip {
-                wrap.socket_addr
-            } else {
-                None
-            },
-            read_only: if let Some(ro) = kmsg.read_only {
-                ro
-            } else {
-                false
-            },
+            transaction_id:     kmsg.transaction_id,
+            sender_id:          U160::empty(),
+            destination_addr:   if let Some(wrap) = kmsg.peer_ip { wrap.socket_addr } else { None },
+            read_only:          if let Some(ro) = kmsg.read_only { ro } else { false },
         };
 
         let message = match kmsg.message_type.as_str() {
             kmsg::Y_ERROR => {
-                let err = kmsg
-                    .error
-                    .ok_or(simple_error!("stated error type but no error data"))?;
-                Message::Error(Error {
-                    code: err.0,
-                    description: err.1,
-                    base,
-                })
+                let err = kmsg.error.ok_or(simple_error!("stated error type but no error data"))?;
+                Message::Error(Error { code: err.0, description: err.1, base })
             }
             kmsg::Y_QUERY => {
                 let err = simple_error!("stated query type but no query data");
@@ -178,9 +151,7 @@ impl Message {
                         method: match kmsg.query_method.ok_or(err.clone())?.as_str() {
                             kmsg::Q_PING => QueryMethod::Ping,
                             kmsg::Q_FIND_NODE => QueryMethod::FindNode(args.target.ok_or(err)?),
-                            kmsg::Q_ANNOUNCE_PEER => {
-                                QueryMethod::AnnouncePeer(args.info_hash.ok_or(err)?)
-                            }
+                            kmsg::Q_ANNOUNCE_PEER => QueryMethod::AnnouncePeer(args.info_hash.ok_or(err)?),
                             kmsg::Q_GET_PEERS => QueryMethod::GetPeers(args.info_hash.ok_or(err)?),
                             kmsg::Q_PUT => QueryMethod::Put(args.bep44),
                             kmsg::Q_GET => QueryMethod::Get,
@@ -200,9 +171,7 @@ impl Message {
                         kind: if let Some(nodes) = response.nodes {
                             ResponseKind::KNearest(nodes.dht_nodes)
                         } else if let Some(peers) = response.values {
-                            ResponseKind::Peers(
-                                peers.iter().filter_map(|p| p.socket_addr).collect(),
-                            )
+                            ResponseKind::Peers(peers.iter().filter_map(|p| p.socket_addr).collect())
                         } else if response.bep44.v.is_some() {
                             ResponseKind::Data(response.bep44)
                         } else {
@@ -243,22 +212,17 @@ impl Display for Message {
 
 impl MessageBase {
     pub fn to_error_generic(self, description: &str) -> Error {
-        Error {
-            code: KnownError::Generic as u16,
-            description: description.to_owned(),
-            base: self,
-        }
+        Error { code: KnownError::Generic as u16, description: description.to_owned(), base: self }
     }
+
     pub fn to_error(self, kind: KnownError) -> Error {
-        Error {
-            code: kind as u16,
-            description: kind.description().to_owned(),
-            base: self,
-        }
+        Error { code: kind as u16, description: kind.description().to_owned(), base: self }
     }
+
     pub fn to_query(self, method: QueryMethod) -> Query {
         Query { method, base: self }
     }
+
     pub fn to_response(self, kind: ResponseKind) -> Response {
         Response { kind, base: self }
     }

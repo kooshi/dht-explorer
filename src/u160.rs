@@ -11,17 +11,13 @@ impl U160 {
     pub fn new(msbytes: u128, lsbytes: u32) -> Self {
         Self { msbytes, lsbytes }
     }
+
     pub fn rand() -> Self {
-        Self {
-            msbytes: rand::random(),
-            lsbytes: rand::random(),
-        }
+        Self { msbytes: rand::random(), lsbytes: rand::random() }
     }
+
     pub fn empty() -> Self {
-        Self {
-            msbytes: 0,
-            lsbytes: 0,
-        }
+        Self { msbytes: 0, lsbytes: 0 }
     }
 
     pub fn distance(self, other: Self) -> Self {
@@ -60,6 +56,7 @@ impl U160 {
 
 impl BitXor for U160 {
     type Output = Self;
+
     fn bitxor(self, rhs: Self) -> Self::Output {
         Self::new(self.msbytes ^ rhs.msbytes, self.lsbytes ^ rhs.lsbytes)
     }
@@ -67,6 +64,7 @@ impl BitXor for U160 {
 
 impl BitAnd for U160 {
     type Output = Self;
+
     fn bitand(self, rhs: Self) -> Self::Output {
         Self::new(self.msbytes & rhs.msbytes, self.lsbytes & rhs.lsbytes)
     }
@@ -74,6 +72,7 @@ impl BitAnd for U160 {
 
 impl BitOr for U160 {
     type Output = Self;
+
     fn bitor(self, rhs: Self) -> Self::Output {
         Self::new(self.msbytes | rhs.msbytes, self.lsbytes | rhs.lsbytes)
     }
@@ -81,6 +80,7 @@ impl BitOr for U160 {
 
 impl Not for U160 {
     type Output = Self;
+
     fn not(self) -> Self::Output {
         Self::new(!self.msbytes, !self.lsbytes)
     }
@@ -88,23 +88,16 @@ impl Not for U160 {
 
 impl Shr<u8> for U160 {
     type Output = Self;
+
     fn shr(self, rhs: u8) -> Self::Output {
         let msshift = rhs.min(127);
         let msremain = rhs - msshift;
-        let msbytes = if msremain > 0 {
-            0
-        } else {
-            self.msbytes >> msshift
-        };
+        let msbytes = if msremain > 0 { 0 } else { self.msbytes >> msshift };
         let overflow = ((self.msbytes << 127 - msshift) >> msremain >> (127 - 32)) as u32;
 
         let lsshift = rhs.min(31);
         let lsremain = rhs - lsshift;
-        let lsbytes = if lsremain > 0 {
-            0
-        } else {
-            self.lsbytes >> lsshift
-        };
+        let lsbytes = if lsremain > 0 { 0 } else { self.lsbytes >> lsshift };
         let lsbytes = lsbytes | overflow;
 
         Self::new(msbytes, lsbytes)
@@ -113,27 +106,17 @@ impl Shr<u8> for U160 {
 
 impl Shl<u8> for U160 {
     type Output = Self;
+
     fn shl(self, rhs: u8) -> Self::Output {
         let lsshift = rhs.min(31);
         let lsremain = rhs - lsshift;
-        let lsbytes = if lsremain > 0 {
-            0
-        } else {
-            self.lsbytes << lsshift
-        };
-        let overflow = if lsshift == 0 || lsremain > 127 {
-            0
-        } else {
-            ((self.lsbytes >> (32 - lsshift)) as u128) << lsremain
-        };
+        let lsbytes = if lsremain > 0 { 0 } else { self.lsbytes << lsshift };
+        let overflow =
+            if lsshift == 0 || lsremain > 127 { 0 } else { ((self.lsbytes >> (32 - lsshift)) as u128) << lsremain };
 
         let msshift = rhs.min(127);
         let msremain = rhs - msshift;
-        let msbytes = if msremain > 0 {
-            0
-        } else {
-            self.msbytes << msshift
-        };
+        let msbytes = if msremain > 0 { 0 } else { self.msbytes << msshift };
         let msbytes = msbytes | overflow as u128;
 
         Self::new(msbytes, lsbytes)
@@ -212,7 +195,7 @@ mod tests {
         assert!(id.get_bit(127));
         assert!(id.get_bit(159));
 
-        let id = U160::new(0xFFFFFFFE_FFFFFFFF_00000000_00000001_u128, 0x00000001_u32);
+        let id = U160::new(0xfffffffe_ffffffff_00000000_00000001_u128, 0x00000001_u32);
         assert!(!id.get_bit(31));
     }
 

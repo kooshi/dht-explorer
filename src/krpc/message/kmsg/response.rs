@@ -64,10 +64,10 @@ pub struct KResponseBep44 {
 
 pub struct ResponseBep51 {
     //TODO https://github.com/anacrolix/dht/blob/master/krpc/msg.go
-//     https://www.bittorrent.org/beps/bep_0051.html
+    //     https://www.bittorrent.org/beps/bep_0051.html
 }
 
 pub struct ResponseBep33 {
     //TODO https://github.com/anacrolix/dht/blob/master/krpc/msg.go
-//     https://www.bittorrent.org/beps/bep_0033.html
+    //     https://www.bittorrent.org/beps/bep_0033.html
 }

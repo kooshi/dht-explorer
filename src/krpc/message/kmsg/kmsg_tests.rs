@@ -1,54 +1,37 @@
 use super::*;
 use crate::{u160::U160, utils};
-#[cfg(test)]
 use std::{net::SocketAddr, str::FromStr};
 #[test]
 pub fn find_node() {
-    let msg = bt_bencode::from_slice::<KMessage>(b"d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();
+    let msg = bt_bencode::from_slice::<KMessage>(
+        b"d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe",
+    )
+    .unwrap();
     println!("{:?}", msg);
     assert_eq!(msg.message_type, Y_QUERY);
     assert_eq!(msg.transaction_id, "aa");
     assert_eq!(msg.query_method.unwrap(), Q_FIND_NODE);
-    assert_eq!(
-        msg.arguments.as_ref().unwrap().id,
-        U160::from_be_bytes(b"abcdefghij0123456789")
-    );
-    assert_eq!(
-        msg.arguments.as_ref().unwrap().target.unwrap(),
-        U160::from_be_bytes(b"mnopqrstuvwxyz123456")
-    );
+    assert_eq!(msg.arguments.as_ref().unwrap().id, U160::from_be_bytes(b"abcdefghij0123456789"));
+    assert_eq!(msg.arguments.as_ref().unwrap().target.unwrap(), U160::from_be_bytes(b"mnopqrstuvwxyz123456"));
 }
 
 #[test]
 pub fn response() {
-    let msg = bt_bencode::from_slice::<KMessage>(
-        b"d1:rd2:id20:0123456789abcdefghij5:nodes9:def456...e1:t2:aa1:y1:re",
-    )
-    .unwrap();
+    let msg = bt_bencode::from_slice::<KMessage>(b"d1:rd2:id20:0123456789abcdefghij5:nodes9:def456...e1:t2:aa1:y1:re")
+        .unwrap();
     println!("{:?}", msg);
     assert_eq!(msg.message_type, Y_RESPONSE);
     assert_eq!(msg.transaction_id, "aa");
-    assert_eq!(
-        msg.response.as_ref().unwrap().id,
-        U160::from_be_bytes(b"0123456789abcdefghij")
-    );
+    assert_eq!(msg.response.as_ref().unwrap().id, U160::from_be_bytes(b"0123456789abcdefghij"));
 }
 
 #[test]
 pub fn ser_nodes() {
     let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-    let host = DhtNode {
-        id: U160::rand(),
-        addr: socket,
-    };
-    let mut nodes = CompactIPv4NodeInfo {
-        dht_nodes: Default::default(),
-    };
+    let host = DhtNode { id: U160::rand(), addr: socket };
+    let mut nodes = CompactIPv4NodeInfo { dht_nodes: Default::default() };
     nodes.dht_nodes.push(host);
-    let host = DhtNode {
-        id: U160::rand(),
-        addr: socket,
-    };
+    let host = DhtNode { id: U160::rand(), addr: socket };
     nodes.dht_nodes.push(host);
     let ser_nodes = bt_bencode::to_vec(&nodes).unwrap();
     println!("NODES: {}", utils::safe_string_from_slice(&ser_nodes));
@@ -86,9 +69,7 @@ pub fn error() {
 
 #[test]
 pub fn addr_wrap() {
-    let test = SocketAddrWrapper {
-        socket_addr: Some(SocketAddr::from_str("127.0.0.1:1337").unwrap()),
-    };
+    let test = SocketAddrWrapper { socket_addr: Some(SocketAddr::from_str("127.0.0.1:1337").unwrap()) };
     let test_vec = bt_bencode::to_vec(&test).unwrap();
     println!("TESTVEC {}", utils::safe_string_from_slice(&test_vec));
     let test_out = bt_bencode::from_slice::<SocketAddrWrapper>(&test_vec).unwrap();
@@ -96,9 +77,7 @@ pub fn addr_wrap() {
     assert_eq!(test, test_out);
 
     let testv6 = SocketAddrWrapper {
-        socket_addr: Some(
-            SocketAddr::from_str("[2001:db8:85a3:8d3:1319:8a2e:370:7348]:1337").unwrap(),
-        ),
+        socket_addr: Some(SocketAddr::from_str("[2001:db8:85a3:8d3:1319:8a2e:370:7348]:1337").unwrap()),
     };
     let test_vec = bt_bencode::to_vec(&testv6).unwrap();
     println!("TESTVEC: {}", utils::safe_string_from_slice(&test_vec));
@@ -117,10 +96,8 @@ pub fn find_nodes_response() {
 
 #[test]
 pub fn ping_response_plus_data() {
-    let buf = base64::decode(
-        "ZDE6cmQyOmlkMjA6es6LsAHqL6S93sAyV+y8t2mzqLdlMTp0Nzp0ZXN0aW5nMTp2NDpsdA2AMTp5MTpyZQ==",
-    )
-    .unwrap();
+    let buf =
+        base64::decode("ZDE6cmQyOmlkMjA6es6LsAHqL6S93sAyV+y8t2mzqLdlMTp0Nzp0ZXN0aW5nMTp2NDpsdA2AMTp5MTpyZQ==").unwrap();
     println!("MESSAGE: {}", utils::safe_string_from_slice(&buf));
     let mut msg = bt_bencode::from_slice::<KMessage>(&buf).unwrap();
     msg.response.as_mut().unwrap().bep44.v = Some(b"HELLOWORLD".to_vec());
@@ -134,10 +111,8 @@ pub fn ping_response_plus_data() {
 
 #[test]
 pub fn error_response() {
-    let buf = base64::decode(
-        "ZDE6ZWxpMjAzZTMwOlRyYW5zYWN0aW9uIElEIGxlbmd0aCB0b28gbG9uZ2UxOnY0Omx0DYAxOnkxOmVl",
-    )
-    .unwrap();
+    let buf =
+        base64::decode("ZDE6ZWxpMjAzZTMwOlRyYW5zYWN0aW9uIElEIGxlbmd0aCB0b28gbG9uZ2UxOnY0Omx0DYAxOnkxOmVl").unwrap();
     println!("MESSAGE: {}", utils::safe_string_from_slice(&buf));
     let msg = bt_bencode::from_slice::<KMessage>(&buf).unwrap();
     println!("{:?}", msg);

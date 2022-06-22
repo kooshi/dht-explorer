@@ -5,10 +5,10 @@ use structopt::StructOpt;
 pub struct Opt {
     /// Silence all output
     #[structopt(short = "q", long = "quiet")]
-    pub quiet: bool,
+    pub quiet:      bool,
     /// Verbose mode (-v, -vv, -vvv, etc)
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
-    pub verbose: usize,
+    pub verbose:    usize,
     /// Timestamp (sec, ms, ns, none)
     #[structopt(long)]
     pub timestamps: Option<stderrlog::Timestamp>,

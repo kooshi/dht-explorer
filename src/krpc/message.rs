@@ -1,10 +1,9 @@
 pub(crate) mod kmsg;
 mod message_impl;
+use self::kmsg::nodes::CompactIPv4NodeInfo;
 use crate::{dht_node::DhtNode, u160::U160};
 use std::{fmt::Display, net::SocketAddr, ops::Deref};
 use typed_builder::TypedBuilder;
-
-use self::kmsg::nodes::CompactIPv4NodeInfo;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
@@ -16,43 +15,41 @@ pub enum Message {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query {
     pub method: QueryMethod,
-    base: MessageBase,
+    base:       MessageBase,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
     pub kind: ResponseKind,
-    base: MessageBase,
+    base:     MessageBase,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
-    pub code: u16,
+    pub code:        u16,
     pub description: String,
-    base: MessageBase,
+    base:            MessageBase,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum KnownError {
-    Generic = 201,
-    Protocol = 203,
-    MethodUnknown = 204,
-    InvalidV = 205,
-    InvalidSig = 206,
-    SaltTooLong = 207,
-    CasMismatch = 301,
+    Generic            = 201,
+    Protocol           = 203,
+    MethodUnknown      = 204,
+    InvalidV           = 205,
+    InvalidSig         = 206,
+    SaltTooLong        = 207,
+    CasMismatch        = 301,
     SeqLessThanCurrent = 302,
-    InvalidNodeId = 305,
-    Internal = 501,
+    InvalidNodeId      = 305,
+    Internal           = 501,
 }
 
 impl KnownError {
     pub fn description(&self) -> &str {
         match self {
             KnownError::Generic => "A Generic Error Occurred",
-            KnownError::Protocol => {
-                "Protocol Error, such as a malformed packet, invalid arguments, or bad token"
-            }
+            KnownError::Protocol => "Protocol Error, such as a malformed packet, invalid arguments, or bad token",
             KnownError::MethodUnknown => "Method Unknown",
             KnownError::InvalidV => "V missing or too long (>999).",
             KnownError::InvalidSig => "Invalid signature",
@@ -89,12 +86,12 @@ impl Error {
 
 #[derive(TypedBuilder, Debug, Clone, PartialEq, Eq)]
 pub struct MessageBase {
-    pub sender_id: U160,
-    pub transaction_id: String,
+    pub sender_id:          U160,
+    pub transaction_id:     String,
     #[builder(setter(strip_option))]
-    pub destination_addr: Option<SocketAddr>,
+    pub destination_addr:   Option<SocketAddr>,
     #[builder(default)]
-    pub read_only: bool,
+    pub read_only:          bool,
     #[builder(default, setter(skip))]
     pub received_from_addr: Option<SocketAddr>,
 }
@@ -105,7 +102,7 @@ pub enum QueryMethod {
     Ping,
     FindNode(U160),
     GetPeers(InfoHash),
-    AnnouncePeer(InfoHash),
+    AnnouncePeer(InfoHash), //add implied port
     Put(kmsg::MessageArgsBep44),
     Get,
 }

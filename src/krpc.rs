@@ -1,61 +1,40 @@
-mod krpc_tests;
-use self::message::{Message, MessageBase, Query, Response, ResponseKind};
-use crate::utils::{self, LogErrExt};
-use crate::{dht_node::DhtNode, routing_table::bucket::Bucket};
+use self::message::{Message, MessageBase, Query, ResponseKind};
+use crate::{dht_node::DhtNode, routing_table::bucket::Bucket, utils::{self, LogErrExt}};
 use futures::future::{FutureExt, RemoteHandle};
 use log::*;
 use message::QueryMethod;
 use simple_error::{map_err_with, require_with, try_with, SimpleResult};
-use std::net::SocketAddr;
-use std::{error::Error, ops::DerefMut, sync::Arc};
-use tokio::sync::oneshot;
-use tokio::{net::UdpSocket, sync::Mutex};
-use tokio::{time, time::Duration};
+use std::{error::Error, net::SocketAddr, ops::DerefMut, sync::Arc};
+use tokio::{net::UdpSocket, sync::{oneshot, Mutex}, time, time::Duration};
+#[cfg(test)]
+mod krpc_tests;
 pub(crate) mod message;
 
 pub struct KrpcService {
-    state: Arc<State>,
-
-    //exists just to drop
-    //and cancel job when
-    //main service exits scope
-    #[allow(dead_code)]
-    recv_handle: RemoteHandle<()>,
+    state:        Arc<State>,
+    _recv_handle: RemoteHandle<()>,
 }
 struct State {
-    socket: UdpSocket,
-    routes: Mutex<Bucket>,
+    socket:              UdpSocket,
     outstanding_queries: Mutex<Vec<OutstandingQuery>>,
-    host_node: DhtNode,
-    timeout_ms: u16,
-    read_only: bool,
+    host_node:           DhtNode,
+    timeout_ms:          u16,
+    read_only:           bool,
 }
 struct OutstandingQuery {
     transaction_id: String,
-    return_value: oneshot::Sender<Message>,
+    return_value:   oneshot::Sender<Message>,
 }
 
 impl KrpcService {
-    pub async fn new(
-        host_node: DhtNode,
-        timeout_ms: u16,
-        read_only: bool,
-    ) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(host_node: DhtNode, timeout_ms: u16, read_only: bool) -> Result<Self, Box<dyn Error>> {
         let socket = UdpSocket::bind(host_node.addr).await?;
-        let routes = Mutex::new(Bucket::root(host_node, 8));
         let outstanding_queries = Mutex::new(Vec::with_capacity(20));
-        let state = Arc::new(State {
-            host_node,
-            socket,
-            routes,
-            outstanding_queries,
-            timeout_ms,
-            read_only,
-        });
+        let state = Arc::new(State { host_node, socket, outstanding_queries, timeout_ms, read_only });
 
-        let (job, recv_handle) = FutureExt::remote_handle(KrpcService::recv(state.clone()));
+        let (job, _recv_handle) = FutureExt::remote_handle(KrpcService::recv(state.clone()));
 
-        let new = KrpcService { recv_handle, state };
+        let new = KrpcService { _recv_handle, state };
         tokio::spawn(job);
 
         Ok(new)
@@ -97,9 +76,7 @@ impl KrpcService {
             "Received {} [{}] from {}",
             message,
             message.transaction_id,
-            message
-                .received_from_addr
-                .map_or("<unknown>".to_string(), |a| a.to_string())
+            message.received_from_addr.map_or("<unknown>".to_string(), |a| a.to_string())
         );
         debug!("Received: {:?}", message);
 
@@ -140,14 +117,13 @@ impl KrpcService {
     pub async fn send_message(&self, message: &Message) -> SimpleResult<()> {
         Self::_send_message(&self.state, message).await
     }
+
     async fn _send_message(state: &Arc<State>, message: &Message) -> SimpleResult<()> {
         info!(
             "Sending {} [{}] to {}",
             message,
             message.transaction_id,
-            message
-                .destination_addr
-                .map_or("<unknown>".to_string(), |a| a.to_string())
+            message.destination_addr.map_or("<unknown>".to_string(), |a| a.to_string())
         );
         debug!("Sending: {:?}", message);
 
@@ -157,11 +133,7 @@ impl KrpcService {
         Ok(())
     }
 
-    fn build_message_base(
-        state: &Arc<State>,
-        to: SocketAddr,
-        transaction_id: String,
-    ) -> MessageBase {
+    fn build_message_base(state: &Arc<State>, to: SocketAddr, transaction_id: String) -> MessageBase {
         MessageBase::builder()
             .sender_id(state.host_node.id)
             .transaction_id(transaction_id)
@@ -171,8 +143,7 @@ impl KrpcService {
     }
 
     pub async fn query(&self, method: QueryMethod, to: SocketAddr) -> SimpleResult<Message> {
-        let msg = Self::build_message_base(&self.state, to, rand::random::<u32>().to_string())
-            .to_query(method);
+        let msg = Self::build_message_base(&self.state, to, rand::random::<u32>().to_string()).to_query(method);
         Self::_query(&self.state, msg).await
     }
 
@@ -180,10 +151,7 @@ impl KrpcService {
         let (return_tx, return_rx) = oneshot::channel();
         {
             let mut queue = state.outstanding_queries.lock().await;
-            queue.push(OutstandingQuery {
-                transaction_id: query.transaction_id.clone(),
-                return_value: return_tx,
-            });
+            queue.push(OutstandingQuery { transaction_id: query.transaction_id.clone(), return_value: return_tx });
         }
         debug!("Query [{}] added to outstanding", query.transaction_id);
         let message = Message::Query(query);
@@ -203,9 +171,6 @@ impl KrpcService {
     async fn remove_from_queue(state: &Arc<State>, id: &str) -> Option<OutstandingQuery> {
         trace!("Removing [{}] from queue", id);
         let mut queue = state.outstanding_queries.lock().await;
-        queue
-            .iter()
-            .position(|q| q.transaction_id == id)
-            .map(|i| queue.remove(i))
+        queue.iter().position(|q| q.transaction_id == id).map(|i| queue.remove(i))
     }
 }

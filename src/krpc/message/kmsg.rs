@@ -1,13 +1,4 @@
-pub(crate) mod error;
-mod kmsg_tests;
-pub(crate) mod nodes;
-pub(crate) mod response;
-pub(crate) mod serde_extra;
-pub(crate) mod socket_addr_wrapper;
-use crate::{
-    dht_node::{DhtNode, IPV4_DHT_NODE_BYTES_LEN},
-    u160::U160,
-};
+use crate::{dht_node::{DhtNode, IPV4_DHT_NODE_BYTES_LEN}, u160::U160};
 use error::Error;
 use nodes::CompactIPv4NodeInfo;
 use response::KResponse;
@@ -16,6 +7,14 @@ use serde_derive::{Deserialize, Serialize};
 use socket_addr_wrapper::SocketAddrWrapper;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use typed_builder::TypedBuilder;
+
+pub(crate) mod error;
+#[cfg(test)]
+mod kmsg_tests;
+pub(crate) mod nodes;
+pub(crate) mod response;
+pub(crate) mod serde_extra;
+pub(crate) mod socket_addr_wrapper;
 
 pub const Q_ANNOUNCE_PEER: &'static str = "announce_peer";
 pub const Q_PING: &'static str = "ping";
