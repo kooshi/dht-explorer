@@ -1,29 +1,34 @@
-use self::message::{IMessage, Message, Query};
-use crate::utils;
+use self::message::{Message, MessageData, Query, Response, ResponseKind};
+use crate::utils::{self, LogErrExt};
 use crate::{dht_node::DhtNode, routing_table::bucket::Bucket};
-use chrono::{DateTime, Utc};
 use futures::future::{FutureExt, RemoteHandle};
 use log::*;
+use message::QueryMethod;
+use simple_error::{map_err_with, require_with, try_with, SimpleResult};
 use std::{error::Error, ops::DerefMut, sync::Arc};
 use tokio::sync::oneshot;
 use tokio::{net::UdpSocket, sync::Mutex};
-use tokio::{select, time, time::Duration};
-
+use tokio::{time, time::Duration};
 pub(crate) mod message;
 
 pub struct KrpcService {
     state: Arc<State>,
+
+    //exists just to drop
+    //and cancel job when
+    //main service exits scope
+    #[allow(dead_code)]
     recv_handle: RemoteHandle<()>,
-    timeout_ms: u16,
 }
 struct State {
     socket: UdpSocket,
     routes: Mutex<Bucket>,
     outstanding_queries: Mutex<Vec<OutstandingQuery>>,
+    host_node: DhtNode,
+    timeout_ms: u16,
 }
 struct OutstandingQuery {
     transaction_id: String,
-    timestamp: DateTime<Utc>,
     return_value: oneshot::Sender<Message>,
 }
 
@@ -33,18 +38,16 @@ impl KrpcService {
         let routes = Mutex::new(Bucket::root(host_node, 8));
         let outstanding_queries = Mutex::new(Vec::with_capacity(20));
         let state = Arc::new(State {
+            host_node,
             socket,
             routes,
             outstanding_queries,
+            timeout_ms,
         });
 
         let (job, recv_handle) = FutureExt::remote_handle(KrpcService::recv(state.clone()));
 
-        let new = KrpcService {
-            state,
-            recv_handle,
-            timeout_ms,
-        };
+        let new = KrpcService { recv_handle, state };
         tokio::spawn(job);
 
         Ok(new)
@@ -67,9 +70,7 @@ impl KrpcService {
                     let message = Message::receive(slice, from);
                     if let Ok(message) = message {
                         let state_clone = state.clone();
-                        tokio::spawn(async move {
-                            KrpcService::handle_received(message, state_clone).await
-                        });
+                        tokio::spawn(Self::handle_received(message, state_clone));
                     } else {
                         error!("Deserializing Message: {:?}", message);
                     }
@@ -87,68 +88,95 @@ impl KrpcService {
         info!(
             "Received {} [{}] from {}",
             message,
-            message.data().transaction_id(),
-            message.data().received_from_addr().unwrap()
+            message.transaction_id,
+            message
+                .received_from_addr
+                .map_or("<unknown>".to_string(), |a| a.to_string())
         );
         debug!("Received: {:?}", message);
-        {
-            let mut queue = state.outstanding_queries.lock().await;
-            if let Some(index) = queue
-                .iter()
-                .position(|q| q.transaction_id == message.data().transaction_id())
-            {
-                let q = queue.remove(index);
-                debug!("Returning value for [{}]", message.data().transaction_id());
-                q.return_value.send(message);
+
+        match message {
+            Message::Query(q) => Self::handle_query(&q, &state).await.log(),
+            _ => {
+                let id = &message.transaction_id;
+                if let Some(q) = Self::remove_from_queue(&state, id).await {
+                    debug!("Returning value for [{}]", id);
+                    q.return_value.send(message).ok();
+                }
             }
         }
     }
 
-    pub async fn send_message(&self, message: Message) {
+    async fn handle_query(q: &Query, state: &Arc<State>) -> SimpleResult<()> {
+        let data = MessageData::builder()
+            .destination_addr(require_with!(q.received_from_addr, "no return address"))
+            .sender_id(state.host_node.id)
+            .transaction_id(q.transaction_id.clone())
+            .build();
+        let message = match q.method {
+            QueryMethod::Ping => Message::Response(Response::new(ResponseKind::Ok, data)),
+            QueryMethod::FindNode(_) => todo!(),
+            QueryMethod::GetPeers(_) => todo!(),
+            QueryMethod::AnnouncePeer(_) => todo!(),
+            QueryMethod::Put(_) => todo!(),
+            QueryMethod::Get => todo!(),
+        };
+        Self::_send_message(&state, &message).await
+    }
+
+    pub async fn send_message(&self, message: &Message) -> SimpleResult<()> {
+        Self::_send_message(&self.state, message).await
+    }
+    async fn _send_message(state: &Arc<State>, message: &Message) -> SimpleResult<()> {
         info!(
             "Sending {} [{}] to {}",
             message,
-            message.data().transaction_id(),
-            message.data().destination_addr().unwrap()
+            message.transaction_id,
+            message
+                .destination_addr
+                .map_or("<unknown>".to_string(), |a| a.to_string())
         );
         debug!("Sending: {:?}", message);
 
-        let slice = &message.to_bytes();
-        let addr = message.data().destination_addr().unwrap();
-        self.state.socket.send_to(&slice, addr).await.unwrap();
+        let slice = message.to_bytes()?;
+        let addr = require_with!(message.destination_addr, "No send address");
+        try_with!(state.socket.send_to(&slice, addr).await, "Send failed");
+        Ok(())
     }
 
-    pub async fn query(&self, query: Query) -> Result<Message, oneshot::error::RecvError> {
+    pub async fn query(&self, query: Query) -> SimpleResult<Message> {
+        Self::_query(&self.state, query).await
+    }
+    async fn _query(state: &Arc<State>, query: Query) -> SimpleResult<Message> {
         let (return_tx, return_rx) = oneshot::channel();
         {
-            let mut queue = self.state.outstanding_queries.lock().await;
+            let mut queue = state.outstanding_queries.lock().await;
             queue.push(OutstandingQuery {
-                transaction_id: query.transaction_id().to_string(),
-                timestamp: chrono::offset::Utc::now(),
+                transaction_id: query.transaction_id.clone(),
                 return_value: return_tx,
             });
         }
-        debug!("Query [{}] added to outstanding", query.transaction_id());
-        let message = query.to_message();
-        let clone_data = message.data().clone();
-        self.send_message(message).await;
+        debug!("Query [{}] added to outstanding", query.transaction_id);
+        let message = Message::Query(query);
+        Self::_send_message(state, &message).await?;
 
-        let sleep = time::sleep(Duration::from_millis(self.timeout_ms.into()));
+        let sleep = time::sleep(Duration::from_millis(state.timeout_ms.into()));
         tokio::select! {
-            m = return_rx => {m}
+            m = return_rx => { map_err_with!(m, "channel recv fail") }
             _ = sleep => {
-                self.remove_from_queue(clone_data.transaction_id()).await;
-                info!("Query [{}] timed out", clone_data.transaction_id());
-                Ok(Message::Error(message::Error::new(201,"Timeout".to_string(), clone_data)))
+                Self::remove_from_queue(&state, &message.transaction_id).await;
+                info!("Query [{}] timed out", message.transaction_id);
+                Ok(Message::Error(message::Error::new(201,"Timeout".to_string(), message.data().clone())))
             }
         }
     }
 
-    async fn remove_from_queue(&self, id: &str) {
+    async fn remove_from_queue(state: &Arc<State>, id: &str) -> Option<OutstandingQuery> {
         trace!("Removing [{}] from queue", id);
-        let mut queue = self.state.outstanding_queries.lock().await;
-        if let Some(index) = queue.iter().position(|q| q.transaction_id == id) {
-            queue.remove(index);
-        }
+        let mut queue = state.outstanding_queries.lock().await;
+        queue
+            .iter()
+            .position(|q| q.transaction_id == id)
+            .map(|i| queue.remove(i))
     }
 }

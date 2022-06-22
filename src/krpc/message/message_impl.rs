@@ -1,6 +1,6 @@
 use super::{kmsg::*, *};
 use serde::{de, Deserialize, Deserializer, Serialize};
-use simple_error::{bail, simple_error, SimpleError};
+use simple_error::{bail, map_err_with, simple_error, SimpleResult};
 use std::fmt::Display;
 
 impl Serialize for Message {
@@ -39,7 +39,25 @@ impl Deref for Error {
         &self.data
     }
 }
+impl Deref for Message {
+    type Target = MessageData;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Message::Query(Query { data, .. }) => data,
+            Message::Response(Response { data, .. }) => data,
+            Message::Error(Error { data, .. }) => data,
+        }
+    }
+}
+
 impl Message {
+    pub fn data(&self) -> &MessageData {
+        match self {
+            Message::Query(Query { data, .. }) => data,
+            Message::Response(Response { data, .. }) => data,
+            Message::Error(Error { data, .. }) => data,
+        }
+    }
     fn data_mut(&mut self) -> &mut MessageData {
         match self {
             Message::Query(Query { data, .. }) => data,
@@ -47,42 +65,32 @@ impl Message {
             Message::Error(Error { data, .. }) => data,
         }
     }
-    pub fn data(&self) -> &MessageData {
-        match self {
-            Message::Query(Query { data, .. }) => &data,
-            Message::Response(Response { data, .. }) => &data,
-            Message::Error(Error { data, .. }) => &data,
-        }
-    }
 
-    pub fn receive(bytes: &[u8], from: SocketAddr) -> Result<Self, SimpleError> {
+    pub fn receive(bytes: &[u8], from: SocketAddr) -> SimpleResult<Self> {
         Self::from_bytes(bytes).map(|mut s| {
             s.data_mut().received_from_addr = Some(from);
             s
         })
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, SimpleError> {
-        bt_bencode::from_slice(bytes)
-            .map_err(|e| SimpleError::with("error getting message from bytes", e))
+    pub fn from_bytes(bytes: &[u8]) -> SimpleResult<Self> {
+        map_err_with!(bt_bencode::from_slice(bytes), "error deserializing message")
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        bt_bencode::to_vec(self).unwrap()
+    pub fn to_bytes(&self) -> SimpleResult<Vec<u8>> {
+        map_err_with!(bt_bencode::to_vec(self), "error serializing message")
     }
 
     pub fn to_kmsg(&self) -> KMessage {
         let builder = KMessage::builder()
-            .transaction_id(self.data().transaction_id.clone())
+            .transaction_id(self.transaction_id.clone())
             .peer_ip(socket_addr_wrapper::SocketAddrWrapper {
-                socket_addr: self.data().destination_addr,
+                socket_addr: self.destination_addr,
             })
-            .read_only(self.data().read_only);
+            .read_only(self.read_only);
         match &self {
             Message::Query(q) => {
-                let mut args = kmsg::MessageArgs::builder()
-                    .id(self.data().sender_id)
-                    .build();
+                let mut args = kmsg::MessageArgs::builder().id(self.sender_id).build();
                 let builder = builder.message_type(kmsg::Y_QUERY);
                 let builder = match &q.method {
                     QueryMethod::Ping => builder.query_method(Q_PING),
@@ -108,9 +116,7 @@ impl Message {
             }
             Message::Response(r) => {
                 let builder = builder.message_type(kmsg::Y_RESPONSE);
-                let mut response = response::KResponse::builder()
-                    .id(self.data().sender_id)
-                    .build();
+                let mut response = response::KResponse::builder().id(self.sender_id).build();
                 match &r.kind {
                     ResponseKind::Ok => (),
                     ResponseKind::KNearest(nodes) => {
@@ -139,7 +145,7 @@ impl Message {
         }
     }
 
-    pub fn from_kmsg(kmsg: KMessage) -> Result<Self, SimpleError> {
+    pub fn from_kmsg(kmsg: KMessage) -> SimpleResult<Self> {
         let mut data = MessageData {
             received_from_addr: None,
             transaction_id: kmsg.transaction_id,

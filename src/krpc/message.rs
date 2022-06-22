@@ -15,7 +15,7 @@ pub enum Message {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query {
-    method: QueryMethod,
+    pub method: QueryMethod,
     data: MessageData,
 }
 impl Query {
@@ -50,55 +50,33 @@ impl Error {
         }
     }
 }
-pub trait IMessage {
-    fn to_message(self) -> Message;
-}
-impl IMessage for Query {
-    fn to_message(self) -> Message {
-        Message::Query(self)
+
+impl From<Query> for Message {
+    fn from(item: Query) -> Message {
+        Message::Query(item)
     }
 }
-impl IMessage for Response {
-    fn to_message(self) -> Message {
-        Message::Response(self)
+impl From<Response> for Message {
+    fn from(item: Response) -> Message {
+        Message::Response(item)
     }
 }
-impl IMessage for Error {
-    fn to_message(self) -> Message {
-        Message::Error(self)
-    }
-}
-impl IMessage for Message {
-    fn to_message(self) -> Message {
-        self
+impl From<Error> for Message {
+    fn from(item: Error) -> Message {
+        Message::Error(item)
     }
 }
 
 #[derive(TypedBuilder, Debug, Clone, PartialEq, Eq)]
 pub struct MessageData {
-    sender_id: U160,
-    transaction_id: String,
+    pub sender_id: U160,
+    pub transaction_id: String,
     #[builder(setter(strip_option))]
-    destination_addr: Option<SocketAddr>,
+    pub destination_addr: Option<SocketAddr>,
     #[builder(setter(strip_bool))]
-    read_only: bool,
+    pub read_only: bool,
     #[builder(default, setter(skip))]
-    received_from_addr: Option<SocketAddr>,
-}
-
-impl MessageData {
-    pub fn sender_id(&self) -> U160 {
-        self.sender_id
-    }
-    pub fn transaction_id(&self) -> &str {
-        self.transaction_id.as_str()
-    }
-    pub fn destination_addr(&self) -> Option<SocketAddr> {
-        self.destination_addr
-    }
-    pub fn received_from_addr(&self) -> Option<SocketAddr> {
-        self.received_from_addr
-    }
+    pub received_from_addr: Option<SocketAddr>,
 }
 
 type InfoHash = U160;
