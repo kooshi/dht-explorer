@@ -1,10 +1,12 @@
-use self::message::{Message, MessageData, Query, Response, ResponseKind};
+mod krpc_tests;
+use self::message::{Message, MessageBase, Query, Response, ResponseKind};
 use crate::utils::{self, LogErrExt};
 use crate::{dht_node::DhtNode, routing_table::bucket::Bucket};
 use futures::future::{FutureExt, RemoteHandle};
 use log::*;
 use message::QueryMethod;
 use simple_error::{map_err_with, require_with, try_with, SimpleResult};
+use std::net::SocketAddr;
 use std::{error::Error, ops::DerefMut, sync::Arc};
 use tokio::sync::oneshot;
 use tokio::{net::UdpSocket, sync::Mutex};
@@ -26,6 +28,7 @@ struct State {
     outstanding_queries: Mutex<Vec<OutstandingQuery>>,
     host_node: DhtNode,
     timeout_ms: u16,
+    read_only: bool,
 }
 struct OutstandingQuery {
     transaction_id: String,
@@ -33,7 +36,11 @@ struct OutstandingQuery {
 }
 
 impl KrpcService {
-    pub async fn new(host_node: DhtNode, timeout_ms: u16) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(
+        host_node: DhtNode,
+        timeout_ms: u16,
+        read_only: bool,
+    ) -> Result<Self, Box<dyn Error>> {
         let socket = UdpSocket::bind(host_node.addr).await?;
         let routes = Mutex::new(Bucket::root(host_node, 8));
         let outstanding_queries = Mutex::new(Vec::with_capacity(20));
@@ -43,6 +50,7 @@ impl KrpcService {
             routes,
             outstanding_queries,
             timeout_ms,
+            read_only,
         });
 
         let (job, recv_handle) = FutureExt::remote_handle(KrpcService::recv(state.clone()));
@@ -108,13 +116,18 @@ impl KrpcService {
     }
 
     async fn handle_query(q: &Query, state: &Arc<State>) -> SimpleResult<()> {
-        let data = MessageData::builder()
-            .destination_addr(require_with!(q.received_from_addr, "no return address"))
-            .sender_id(state.host_node.id)
-            .transaction_id(q.transaction_id.clone())
-            .build();
+        if state.read_only {
+            debug!("Query received by read only service. Dropped.");
+            return Ok(());
+        }
+
+        let base = Self::build_message_base(
+            state,
+            require_with!(q.received_from_addr, "no return address"),
+            q.transaction_id.clone(),
+        );
         let message = match q.method {
-            QueryMethod::Ping => Message::Response(Response::new(ResponseKind::Ok, data)),
+            QueryMethod::Ping => base.to_response(ResponseKind::Ok).to_message(),
             QueryMethod::FindNode(_) => todo!(),
             QueryMethod::GetPeers(_) => todo!(),
             QueryMethod::AnnouncePeer(_) => todo!(),
@@ -144,9 +157,25 @@ impl KrpcService {
         Ok(())
     }
 
-    pub async fn query(&self, query: Query) -> SimpleResult<Message> {
-        Self::_query(&self.state, query).await
+    fn build_message_base(
+        state: &Arc<State>,
+        to: SocketAddr,
+        transaction_id: String,
+    ) -> MessageBase {
+        MessageBase::builder()
+            .sender_id(state.host_node.id)
+            .transaction_id(transaction_id)
+            .destination_addr(to)
+            .read_only(state.read_only)
+            .build()
     }
+
+    pub async fn query(&self, method: QueryMethod, to: SocketAddr) -> SimpleResult<Message> {
+        let msg = Self::build_message_base(&self.state, to, rand::random::<u32>().to_string())
+            .to_query(method);
+        Self::_query(&self.state, msg).await
+    }
+
     async fn _query(state: &Arc<State>, query: Query) -> SimpleResult<Message> {
         let (return_tx, return_rx) = oneshot::channel();
         {
@@ -166,7 +195,7 @@ impl KrpcService {
             _ = sleep => {
                 Self::remove_from_queue(&state, &message.transaction_id).await;
                 info!("Query [{}] timed out", message.transaction_id);
-                Ok(Message::Error(message::Error::new(201,"Timeout".to_string(), message.data().clone())))
+                Ok(Message::Error( message.base().clone().to_error_generic("Timeout")))
             }
         }
     }

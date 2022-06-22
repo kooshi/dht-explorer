@@ -1,9 +1,9 @@
 pub(crate) mod error;
+mod kmsg_tests;
 pub(crate) mod nodes;
 pub(crate) mod response;
 pub(crate) mod serde_extra;
 pub(crate) mod socket_addr_wrapper;
-mod tests;
 use crate::{
     dht_node::{DhtNode, IPV4_DHT_NODE_BYTES_LEN},
     u160::U160,

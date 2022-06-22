@@ -22,53 +22,49 @@ impl<'de> Deserialize<'de> for Message {
 }
 
 impl Deref for Query {
-    type Target = MessageData;
+    type Target = MessageBase;
     fn deref(&self) -> &Self::Target {
-        &self.data
+        &self.base
     }
 }
 impl Deref for Response {
-    type Target = MessageData;
+    type Target = MessageBase;
     fn deref(&self) -> &Self::Target {
-        &self.data
+        &self.base
     }
 }
 impl Deref for Error {
-    type Target = MessageData;
+    type Target = MessageBase;
     fn deref(&self) -> &Self::Target {
-        &self.data
+        &self.base
     }
 }
 impl Deref for Message {
-    type Target = MessageData;
+    type Target = MessageBase;
     fn deref(&self) -> &Self::Target {
-        match self {
-            Message::Query(Query { data, .. }) => data,
-            Message::Response(Response { data, .. }) => data,
-            Message::Error(Error { data, .. }) => data,
-        }
+        self.base()
     }
 }
 
 impl Message {
-    pub fn data(&self) -> &MessageData {
+    pub fn base(&self) -> &MessageBase {
         match self {
-            Message::Query(Query { data, .. }) => data,
-            Message::Response(Response { data, .. }) => data,
-            Message::Error(Error { data, .. }) => data,
+            Message::Query(Query { base, .. }) => base,
+            Message::Response(Response { base, .. }) => base,
+            Message::Error(Error { base, .. }) => base,
         }
     }
-    fn data_mut(&mut self) -> &mut MessageData {
+    fn base_mut(&mut self) -> &mut MessageBase {
         match self {
-            Message::Query(Query { data, .. }) => data,
-            Message::Response(Response { data, .. }) => data,
-            Message::Error(Error { data, .. }) => data,
+            Message::Query(Query { base, .. }) => base,
+            Message::Response(Response { base, .. }) => base,
+            Message::Error(Error { base, .. }) => base,
         }
     }
 
     pub fn receive(bytes: &[u8], from: SocketAddr) -> SimpleResult<Self> {
         Self::from_bytes(bytes).map(|mut s| {
-            s.data_mut().received_from_addr = Some(from);
+            s.base_mut().received_from_addr = Some(from);
             s
         })
     }
@@ -106,8 +102,8 @@ impl Message {
                         args.info_hash = Some(*info_hash);
                         builder.query_method(Q_ANNOUNCE_PEER)
                     }
-                    QueryMethod::Put(data) => {
-                        args.bep44 = data.clone();
+                    QueryMethod::Put(base) => {
+                        args.bep44 = base.clone();
                         builder.query_method(Q_PUT)
                     }
                     QueryMethod::Get => builder.query_method(Q_GET),
@@ -134,7 +130,7 @@ impl Message {
                                 .collect(),
                         )
                     }
-                    ResponseKind::Data(data) => response.bep44 = data.clone(),
+                    ResponseKind::Data(base) => response.bep44 = base.clone(),
                 };
                 builder.response(response).build()
             }
@@ -146,7 +142,7 @@ impl Message {
     }
 
     pub fn from_kmsg(kmsg: KMessage) -> SimpleResult<Self> {
-        let mut data = MessageData {
+        let mut base = MessageBase {
             received_from_addr: None,
             transaction_id: kmsg.transaction_id,
             sender_id: U160::empty(),
@@ -170,15 +166,15 @@ impl Message {
                 Message::Error(Error {
                     code: err.0,
                     description: err.1,
-                    data,
+                    base,
                 })
             }
             kmsg::Y_QUERY => {
                 let err = simple_error!("stated query type but no query data");
                 if let Some(args) = kmsg.arguments {
-                    data.sender_id = args.id;
+                    base.sender_id = args.id;
                     Message::Query(Query {
-                        data,
+                        base,
                         method: match kmsg.query_method.ok_or(err.clone())?.as_str() {
                             kmsg::Q_PING => QueryMethod::Ping,
                             kmsg::Q_FIND_NODE => QueryMethod::FindNode(args.target.ok_or(err)?),
@@ -198,9 +194,9 @@ impl Message {
             kmsg::Y_RESPONSE => {
                 let err = simple_error!("stated response type but no response data");
                 if let Some(response) = kmsg.response {
-                    data.sender_id = response.id;
+                    base.sender_id = response.id;
                     Message::Response(Response {
-                        data,
+                        base,
                         kind: if let Some(nodes) = response.nodes {
                             ResponseKind::KNearest(nodes.dht_nodes)
                         } else if let Some(peers) = response.values {
@@ -245,28 +241,46 @@ impl Display for Message {
     }
 }
 
+impl MessageBase {
+    pub fn to_error_generic(self, description: &str) -> Error {
+        Error {
+            code: KnownError::Generic as u16,
+            description: description.to_owned(),
+            base: self,
+        }
+    }
+    pub fn to_error(self, kind: KnownError) -> Error {
+        Error {
+            code: kind as u16,
+            description: kind.description().to_owned(),
+            base: self,
+        }
+    }
+    pub fn to_query(self, method: QueryMethod) -> Query {
+        Query { method, base: self }
+    }
+    pub fn to_response(self, kind: ResponseKind) -> Response {
+        Response { kind, base: self }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::utils;
+    use std::str::FromStr;
 
     #[test]
     pub fn ping() {
-        let data = MessageData::builder()
+        let msg = MessageBase::builder()
             .sender_id(U160::rand())
             .transaction_id("test".to_string())
-            .destination_addr(
-                <std::net::SocketAddrV4 as std::str::FromStr>::from_str("127.0.0.1:1337")
-                    .unwrap()
-                    .into(),
-            )
-            .read_only()
-            .build();
+            .destination_addr(SocketAddr::from_str("127.0.0.1:1337").unwrap().into())
+            .read_only(true)
+            .build()
+            .to_query(QueryMethod::Ping)
+            .to_message();
 
-        let msg = Message::Query(Query {
-            data,
-            method: QueryMethod::Ping,
-        });
         let msg = bt_bencode::to_vec(&msg).unwrap();
         println!("bencode: {}", utils::safe_string_from_slice(&msg));
 

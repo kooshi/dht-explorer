@@ -79,6 +79,13 @@ impl BitOr for U160 {
     }
 }
 
+impl Not for U160 {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        Self::new(!self.msbytes, !self.lsbytes)
+    }
+}
+
 impl Shr<u8> for U160 {
     type Output = Self;
     fn shr(self, rhs: u8) -> Self::Output {

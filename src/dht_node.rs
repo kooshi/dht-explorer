@@ -40,10 +40,10 @@ impl DhtNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{net::SocketAddrV4, str::FromStr};
+    use std::{net::SocketAddr, str::FromStr};
     #[test]
     fn new() {
-        let socket = std::net::SocketAddr::from(SocketAddrV4::from_str("127.0.0.1:1337").unwrap());
+        let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
         let host = DhtNode {
             id: U160::rand(),
             addr: socket,

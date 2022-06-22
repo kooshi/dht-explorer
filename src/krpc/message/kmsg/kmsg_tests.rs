@@ -1,10 +1,7 @@
 use super::*;
 use crate::{u160::U160, utils};
 #[cfg(test)]
-use std::{
-    net::{SocketAddrV4, SocketAddrV6},
-    str::FromStr,
-};
+use std::{net::SocketAddr, str::FromStr};
 #[test]
 pub fn find_node() {
     let msg = bt_bencode::from_slice::<KMessage>(b"d1:ad2:id20:abcdefghij01234567896:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe").unwrap();
@@ -39,7 +36,7 @@ pub fn response() {
 
 #[test]
 pub fn ser_nodes() {
-    let socket = std::net::SocketAddr::from(SocketAddrV4::from_str("127.0.0.1:1337").unwrap());
+    let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
     let host = DhtNode {
         id: U160::rand(),
         addr: socket,
@@ -63,7 +60,7 @@ pub fn ser_nodes() {
 
 #[test]
 pub fn error() {
-    let test_error = Error::error_invalid_sig();
+    let test_error = Error(201, "Generic".to_owned());
     let encoded = bt_bencode::to_vec(&test_error).unwrap();
     println!("TESTERROR: {}", utils::safe_string_from_slice(&encoded));
 
@@ -90,7 +87,7 @@ pub fn error() {
 #[test]
 pub fn addr_wrap() {
     let test = SocketAddrWrapper {
-        socket_addr: Some(SocketAddrV4::from_str("127.0.0.1:1337").unwrap().into()),
+        socket_addr: Some(SocketAddr::from_str("127.0.0.1:1337").unwrap()),
     };
     let test_vec = bt_bencode::to_vec(&test).unwrap();
     println!("TESTVEC {}", utils::safe_string_from_slice(&test_vec));
@@ -100,9 +97,7 @@ pub fn addr_wrap() {
 
     let testv6 = SocketAddrWrapper {
         socket_addr: Some(
-            SocketAddrV6::from_str("[2001:db8:85a3:8d3:1319:8a2e:370:7348]:1337")
-                .unwrap()
-                .into(),
+            SocketAddr::from_str("[2001:db8:85a3:8d3:1319:8a2e:370:7348]:1337").unwrap(),
         ),
     };
     let test_vec = bt_bencode::to_vec(&testv6).unwrap();
