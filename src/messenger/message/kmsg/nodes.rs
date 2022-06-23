@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CompactIPv4NodeInfo {
-    pub dht_nodes: Vec<DhtNode>,
+    pub dht_nodes: Vec<NodeInfo>,
 }
 
 impl Serialize for CompactIPv4NodeInfo {
@@ -30,7 +30,7 @@ impl<'de> Deserialize<'de> for CompactIPv4NodeInfo {
                         .map(|c| {
                             let mut sized = [0u8; IPV4_DHT_NODE_BYTES_LEN];
                             sized.copy_from_slice(c);
-                            DhtNode::ip4_from_bytes(&sized)
+                            NodeInfo::ip4_from_bytes(&sized)
                         })
                         .collect(),
                 })

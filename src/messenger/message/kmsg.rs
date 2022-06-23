@@ -1,4 +1,4 @@
-use crate::{dht_node::{DhtNode, IPV4_DHT_NODE_BYTES_LEN}, u160::U160};
+use crate::{node_info::{NodeInfo, IPV4_DHT_NODE_BYTES_LEN}, u160::U160};
 use error::Error;
 use nodes::CompactIPv4NodeInfo;
 use response::KResponse;

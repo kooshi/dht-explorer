@@ -1,12 +1,14 @@
 #![allow(dead_code)]
-pub(crate) mod dht_node;
 mod messenger;
+mod node;
+pub(crate) mod node_info;
 mod options;
 mod routing_table;
 mod u160;
 mod utils;
 use messenger::{message::QueryMethod, Messenger};
-use std::{net::SocketAddr, str::FromStr};
+use simple_error::require_with;
+use std::{net::{SocketAddr, ToSocketAddrs}, str::FromStr};
 use structopt::StructOpt;
 use u160::U160;
 
@@ -20,12 +22,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .timestamp(opt.timestamps.unwrap_or(stderrlog::Timestamp::Off))
         .init()?;
 
-    let client_node = dht_node::DhtNode { id: U160::rand(), addr: SocketAddr::from_str(&opt.bind_address).unwrap() };
-    let client = Messenger::new(client_node, opt.timeoutms, None).await?;
+    let peer = require_with!(opt.peer.to_socket_addrs()?.next(), "invalid peer address");
 
-    let server_sock = SocketAddr::from_str(&opt.target_address).unwrap();
+    let client_node = node_info::NodeInfo { id: U160::rand(), addr: SocketAddr::from_str(&opt.bind_v4)? };
+    let client = Messenger::new(client_node, opt.timeout, None).await?;
 
-    let response = client.query(QueryMethod::Ping, server_sock).await;
+    let response = client.query(QueryMethod::Ping, peer).await;
     println!("RESPONSE: {:?}", response);
 
     Ok(())

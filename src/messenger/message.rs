@@ -1,7 +1,7 @@
 pub(crate) mod kmsg;
 mod message_impl;
 use self::kmsg::nodes::CompactIPv4NodeInfo;
-use crate::{dht_node::DhtNode, u160::U160};
+use crate::{node_info::NodeInfo, u160::U160};
 use std::{fmt::Display, net::SocketAddr, ops::Deref};
 use typed_builder::TypedBuilder;
 
@@ -117,7 +117,7 @@ pub enum QueryMethod {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResponseKind {
     Ok,
-    KNearest(Vec<DhtNode>),
+    KNearest(Vec<NodeInfo>),
     Peers(Vec<SocketAddr>),
     Data(kmsg::response::KResponseBep44),
 }

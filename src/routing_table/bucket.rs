@@ -1,22 +1,22 @@
-use crate::{dht_node::DhtNode, u160::U160};
+use crate::{node_info::NodeInfo, u160::U160};
 
 const MAX_BUCKET_INDEX: u8 = 159;
 
 #[derive(Debug)]
 pub struct Bucket {
-    host_node:    DhtNode,
+    host_node:    NodeInfo,
     bucket_index: u8,
     k_size:       u8,
-    nodes:        Vec<DhtNode>,
+    nodes:        Vec<NodeInfo>,
     next_bucket:  Option<Box<Bucket>>,
 }
 
 impl Bucket {
-    pub fn root(host_node: DhtNode, k_size: u8) -> Self {
+    pub fn root(host_node: NodeInfo, k_size: u8) -> Self {
         Self { host_node, k_size, nodes: Vec::with_capacity(k_size as usize), next_bucket: None, bucket_index: 0 }
     }
 
-    pub fn add(&mut self, node: DhtNode) {
+    pub fn add(&mut self, node: NodeInfo) {
         if self.next_bucket.is_none() && self.nodes.len() < self.k_size.into() {
             self.add_or_update(node);
             return;
@@ -33,7 +33,7 @@ impl Bucket {
         self.add_or_update(node)
     }
 
-    fn add_or_update(&mut self, node: DhtNode) {
+    fn add_or_update(&mut self, node: NodeInfo) {
         if let Some(index) = self.nodes.iter().rev().position(|&n| n.id == node.id) {
             let mut index = self.nodes.len() - 1 - index; //inverted position
             while index < self.nodes.len() - 1 {
@@ -45,7 +45,7 @@ impl Bucket {
         }
     }
 
-    pub fn lookup(&self, id: U160) -> Vec<DhtNode> {
+    pub fn lookup(&self, id: U160) -> Vec<NodeInfo> {
         let mut k_nearest = if self.next_bucket.is_some() && !self.id_belongs_here(id) {
             self.next_bucket.as_ref().unwrap().lookup(id)
         } else {
@@ -91,7 +91,7 @@ impl Bucket {
         true
     }
 
-    fn belongs_here(&self, node: &DhtNode) -> bool {
+    fn belongs_here(&self, node: &NodeInfo) -> bool {
         self.host_node.distance(node).get_bit(self.bucket_index)
     }
 
@@ -103,18 +103,18 @@ impl Bucket {
 #[cfg(test)]
 mod tests {
     use super::Bucket;
-    use crate::{dht_node::DhtNode, u160::U160};
+    use crate::{node_info::NodeInfo, u160::U160};
     use std::{net::SocketAddr, str::FromStr};
 
     #[test]
     fn fill() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-        let host = DhtNode { id: U160::empty(), addr: socket };
+        let host = NodeInfo { id: U160::empty(), addr: socket };
         let mut bucket = Bucket::root(host, 8);
-        let test_node = DhtNode { id: U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"), addr: socket };
+        let test_node = NodeInfo { id: U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"), addr: socket };
         bucket.add(test_node);
         for _ in 0..1_000_000 {
-            bucket.add(DhtNode { id: U160::rand() >> (rand::random::<u8>() % 161), addr: socket })
+            bucket.add(NodeInfo { id: U160::rand() >> (rand::random::<u8>() % 161), addr: socket })
         }
         bucket.add(test_node); //update
         println!("{:?}", bucket);
@@ -124,10 +124,10 @@ mod tests {
     #[test]
     fn lookup() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-        let host = DhtNode { id: U160::empty(), addr: socket };
+        let host = NodeInfo { id: U160::empty(), addr: socket };
         let mut bucket = Bucket::root(host, 30);
         for _ in 0..60 {
-            bucket.add(DhtNode { id: U160::rand() >> (rand::random::<u8>() % 161), addr: socket })
+            bucket.add(NodeInfo { id: U160::rand() >> (rand::random::<u8>() % 161), addr: socket })
         }
 
         let query = U160::rand() >> (rand::random::<u8>() % 161);

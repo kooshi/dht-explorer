@@ -1,10 +1,12 @@
 use super::*;
+use std::sync::atomic::Ordering;
 pub struct ServiceState {
     pub socket:           UdpSocket,
     pub queries_outbound: Mutex<Vec<OutstandingQuery>>,
-    pub host_node:        DhtNode,
+    pub host_node:        NodeInfo,
     pub timeout_ms:       u16,
     pub queries_inbound:  QueryHandler,
+    pub packet_num:       AtomicUsize,
 }
 
 #[derive(Clone)]
@@ -29,14 +31,15 @@ impl Service {
             // if the readiness event is a false positive.
             match self.state.socket.try_recv_from(buffer.deref_mut()) {
                 Ok((n, from)) => {
+                    let packet = self.state.packet_num.fetch_add(1, Ordering::Relaxed);
                     let slice = &buffer[..n];
-                    debug!("UDP DATAGRAM: {}", utils::safe_string_from_slice(slice));
-                    debug!("      BASE64: {}", base64::encode(slice));
+                    trace!(" {} : Received: {}", packet, utils::safe_string_from_slice(slice));
+                    debug!(" {} : Received: {}", packet, base64::encode(slice));
                     let message = Message::receive(slice, from);
                     if let Ok(message) = message {
-                        tokio::spawn(self.clone().handle_received(message));
+                        tokio::spawn(self.clone().handle_received(packet, message));
                     } else {
-                        error!("Deserializing Message: {:?}", message);
+                        error!(" {} :Deserializing Message: {:?}", packet, message);
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
@@ -48,14 +51,15 @@ impl Service {
         }
     }
 
-    async fn handle_received(self, message: Message) {
+    async fn handle_received(self, packet: usize, message: Message) {
+        debug!(" {} : Received: {:?}", packet, message);
         info!(
-            "Received {} [{}] from {}",
+            " {} : Received {} [{}] from {}",
+            packet,
             message,
             message.transaction_id,
             message.received_from_addr.map_or("<unknown>".to_string(), |a| a.to_string())
         );
-        debug!("Received: {:?}", message);
 
         let id = message.transaction_id.to_owned();
         match message {
@@ -111,16 +115,18 @@ impl Service {
     }
 
     pub async fn send_message(&self, message: &Message) -> SimpleResult<()> {
+        let packet = self.state.packet_num.fetch_add(1, Ordering::Relaxed);
         info!(
-            "Sending {} [{}] to {}",
+            " {} : Sending {} [{}] to {}",
+            packet,
             message,
             message.transaction_id,
             message.destination_addr.map_or("<unknown>".to_string(), |a| a.to_string())
         );
-        debug!("Sending: {:?}", message);
-
+        debug!(" {} : Sending: {:?}", packet, message);
         let slice = message.to_bytes()?;
         let addr = require_with!(message.destination_addr, "No send address");
+        trace!(" {} : Sending: {}", packet, utils::safe_string_from_slice(&slice));
         try_with!(self.state.socket.send_to(&slice, addr).await, "Send failed");
         Ok(())
     }

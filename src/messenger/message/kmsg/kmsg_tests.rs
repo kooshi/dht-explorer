@@ -28,10 +28,10 @@ pub fn response() {
 #[test]
 pub fn ser_nodes() {
     let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-    let host = DhtNode { id: U160::rand(), addr: socket };
+    let host = NodeInfo { id: U160::rand(), addr: socket };
     let mut nodes = CompactIPv4NodeInfo { dht_nodes: Default::default() };
     nodes.dht_nodes.push(host);
-    let host = DhtNode { id: U160::rand(), addr: socket };
+    let host = NodeInfo { id: U160::rand(), addr: socket };
     nodes.dht_nodes.push(host);
     let ser_nodes = bt_bencode::to_vec(&nodes).unwrap();
     println!("NODES: {}", utils::safe_string_from_slice(&ser_nodes));
