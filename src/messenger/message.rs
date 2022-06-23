@@ -12,6 +12,8 @@ pub enum Message {
     Error(Error),
 }
 
+pub type QueryResult = Result<Response, Error>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query {
     pub method: QueryMethod,
@@ -71,6 +73,11 @@ impl Display for Error {
 impl Query {
     pub fn to_message(self) -> Message {
         Message::Query(self)
+    }
+}
+impl From<QueryResult> for Message {
+    fn from(r: QueryResult) -> Self {
+        r.map_or_else(|e| e.to_message(), |r| r.to_message())
     }
 }
 impl Response {

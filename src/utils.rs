@@ -1,8 +1,10 @@
 use log::error;
+use regex::Regex;
 use simple_error::SimpleResult;
 
 pub fn safe_string_from_slice(bytes: &[u8]) -> String {
-    bytes.iter().map(|c| format!("{:?}", *c as char).replace("'", "")).collect::<String>()
+    let r = Regex::new(r"\\x[a-f0-9]{2}").unwrap();
+    r.replace_all(&bytes.escape_ascii().to_string(), "·").to_string()
 }
 
 pub trait LogErrExt {
