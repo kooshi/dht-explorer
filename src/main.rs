@@ -7,12 +7,10 @@ pub(crate) mod node_info;
 mod options;
 mod u160;
 mod utils;
-use crate::{messenger::message::{kmsg::response, Message, MessageBase}, node::Node};
-use messenger::{message::QueryMethod, Messenger};
+use crate::{messenger::message::Message, node::Node};
 use simple_error::require_with;
 use std::{net::{SocketAddr, ToSocketAddrs}, str::FromStr};
 use structopt::StructOpt;
-use u160::U160;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -2,7 +2,7 @@ use crate::{bucket::Bucket, messenger::{self, message::{MessageBase, Query, Quer
 use async_trait::async_trait;
 use messenger::message::QueryMethod;
 use simple_error::SimpleResult;
-use std::{net::SocketAddr, ops::Deref, path::PathBuf, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
+use std::{net::SocketAddr, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
 use tokio::sync::Mutex;
 
 pub struct Node {
@@ -42,10 +42,21 @@ pub struct NodeState {
     read_only:   bool,
 }
 
+impl NodeState {
+    async fn store_node(&self, node: NodeInfo) {
+        let mut b = self.bucket.lock().await;
+        b.add(node);
+    }
+}
+
 #[async_trait]
 impl QueryHandler for NodeState {
     async fn handle_query(&self, query: Query) -> QueryResult {
-        assert!(self.read_only);
+        assert!(!self.read_only);
+        if !query.read_only {
+            let node = NodeInfo { id: query.sender_id, addr: query.received_from_addr.unwrap() };
+            self.store_node(node).await;
+        }
         let response_base = MessageBase::builder()
             .sender_id(self.info.id)
             .transaction_id(query.transaction_id.clone())

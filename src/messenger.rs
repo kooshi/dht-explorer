@@ -1,7 +1,7 @@
 use self::message::{Message, Query, QueryResult};
 use crate::utils::{self, LogErrExt};
 use async_trait::async_trait;
-use futures::{future::{BoxFuture, FutureExt, RemoteHandle}, Future};
+use futures::future::{FutureExt, RemoteHandle};
 use log::*;
 use simple_error::{map_err_with, require_with, try_with, SimpleResult};
 use std::{net::SocketAddr, ops::DerefMut, sync::{atomic::AtomicUsize, Arc}};

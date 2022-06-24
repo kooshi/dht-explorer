@@ -1,11 +1,12 @@
 use crate::{node_info::NodeInfo, u160::U160};
-use serde_derive::{Deserialize, Serialize};
-use simple_error::SimpleResult;
+use serde::{self, ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
+use simple_error::{try_with, SimpleResult};
 use std::path::PathBuf;
+use tokio::fs::OpenOptions;
 
 const MAX_BUCKET_INDEX: u8 = 159;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Bucket {
     own_id:       U160,
     bucket_index: u8,
@@ -106,39 +107,105 @@ impl Bucket {
         self.own_id.distance(id).get_bit(self.bucket_index)
     }
 
-    pub fn save_to_file(&self, path: PathBuf) -> SimpleResult<()> {
-        todo!()
+    pub async fn save_to_file(&self, path: PathBuf) -> SimpleResult<()> {
+        let file =
+            try_with!(OpenOptions::new().write(true).truncate(true).create(true).open(path).await, "opening file");
+        let file = file.into_std().await;
+        try_with!(bt_bencode::to_writer(file, self), "serialize");
+        Ok(())
     }
 
-    pub fn load_from_file(path: PathBuf) -> SimpleResult<Self> {
-        todo!()
+    pub async fn load_from_file(path: PathBuf) -> SimpleResult<Self> {
+        let file = try_with!(OpenOptions::new().read(true).open(path).await, "opening file");
+        let file = file.into_std().await;
+        let bucket = try_with!(bt_bencode::from_reader(file), "deser");
+        Ok(bucket)
+    }
+}
+
+impl Serialize for Bucket {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        let mut s = serializer.serialize_seq(Some(2))?;
+        s.serialize_element(&self.own_id)?;
+        s.serialize_element(&self.k_size)?;
+        ser_df(&self, &mut s, 1)?;
+        s.end()
+    }
+}
+
+fn ser_df<S>(b: &Bucket, s: &mut S, depth: u16) -> Result<(), S::Error>
+where S: SerializeSeq {
+    if let Some(next) = &b.next_bucket {
+        ser_df(next, s, depth + 1)?;
+    } else {
+        s.serialize_element(&depth)?;
+    }
+    s.serialize_element(&b.nodes)
+}
+
+impl<'de> Deserialize<'de> for Bucket {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: Deserializer<'de> {
+        struct Visitor {}
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = Bucket;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str(&format!("expected error code followed by message"))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where A: serde::de::SeqAccess<'de> {
+                let own_id = seq.next_element()?.unwrap();
+                let k_size = seq.next_element()?.unwrap();
+                let mut bucket_index = seq.next_element()?.unwrap();
+                let mut last_bucket = None;
+                while let Some(nodes) = seq.next_element::<Vec<NodeInfo>>()? {
+                    bucket_index -= 1;
+                    last_bucket =
+                        Some(Box::new(Bucket { own_id, k_size, bucket_index, nodes, next_bucket: last_bucket }));
+                }
+
+                Ok(*last_bucket.unwrap())
+            }
+        }
+        deserializer.deserialize_seq(Visitor {})
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Bucket;
-    use crate::{node_info::NodeInfo, u160::U160};
+    use crate::{node_info::NodeInfo, u160::U160, utils};
     use std::{net::SocketAddr, str::FromStr};
 
     #[test]
-    fn fill() {
+    fn full() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
         let mut bucket = Bucket::root(U160::empty(), 8);
         let test_node = NodeInfo { id: U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"), addr: socket };
         bucket.add(test_node);
-        for _ in 0..10_000 {
-            bucket.add(NodeInfo { id: U160::rand() >> (rand::random::<u8>() % 161), addr: socket })
-        }
+        fill(&mut bucket);
         bucket.add(test_node); //update
         println!("{:?}", bucket);
         assert_eq!(bucket.nodes.pop().unwrap().id, test_node.id);
+    }
+
+    fn fill(bucket: &mut Bucket) {
+        for _ in 0..10_000 {
+            bucket.add(NodeInfo {
+                id:   U160::rand() >> (rand::random::<u8>() % 161),
+                addr: SocketAddr::from_str("127.0.0.1:1337").unwrap(),
+            })
+        }
     }
 
     #[test]
     fn lookup() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
         let mut bucket = Bucket::root(U160::empty(), 30);
+        fill(&mut bucket);
         for _ in 0..60 {
             bucket.add(NodeInfo { id: U160::rand() >> (rand::random::<u8>() % 161), addr: socket })
         }
@@ -153,5 +220,26 @@ mod tests {
 
         let k_nearest = bucket.lookup(U160::empty());
         println!("Searching for: {:?}\nFound:\n{:?}", U160::empty(), k_nearest);
+    }
+
+    #[test]
+    fn serde() {
+        let mut bucket = Bucket::root(U160::empty(), 8);
+        fill(&mut bucket);
+        let ser = bt_bencode::to_vec(&bucket).unwrap();
+        println!("SER: {}", utils::safe_string_from_slice(&ser));
+        let de: Bucket = bt_bencode::from_slice(&ser).unwrap();
+        assert_eq!(de, bucket)
+    }
+
+    #[tokio::test]
+    async fn file() {
+        let mut bucket = Bucket::root(U160::empty(), 8);
+        fill(&mut bucket);
+        let path = "./bucket_test.ben";
+        bucket.save_to_file(path.into()).await.unwrap();
+        let b2 = Bucket::load_from_file(path.into()).await.unwrap();
+        tokio::fs::remove_file(path).await.unwrap();
+        assert_eq!(b2, bucket)
     }
 }
