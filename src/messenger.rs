@@ -1,8 +1,8 @@
-use self::message::{Message, MessageBase, Query, QueryResult};
-use crate::{node_info::NodeInfo, utils::{self, LogErrExt}};
+use self::message::{Message, Query, QueryResult};
+use crate::utils::{self, LogErrExt};
+use async_trait::async_trait;
 use futures::{future::{BoxFuture, FutureExt, RemoteHandle}, Future};
 use log::*;
-use message::QueryMethod;
 use simple_error::{map_err_with, require_with, try_with, SimpleResult};
 use std::{net::SocketAddr, ops::DerefMut, sync::{atomic::AtomicUsize, Arc}};
 use tokio::{net::UdpSocket, sync::{oneshot, Mutex}, time, time::Duration};
@@ -18,11 +18,12 @@ pub struct Messenger {
 }
 
 impl Messenger {
-    pub async fn new(host_node: NodeInfo, timeout_ms: u16, query_handler: QueryHandler) -> SimpleResult<Self> {
-        let socket = map_err_with!(UdpSocket::bind(host_node.addr).await, "error binding host address")?;
+    pub async fn new(
+        bind_addr: SocketAddr, timeout_ms: u16, query_handler: Option<WrappedQueryHandler>,
+    ) -> SimpleResult<Self> {
+        let socket = map_err_with!(UdpSocket::bind(bind_addr).await, "error binding host address")?;
         let queries_outbound = Mutex::new(Vec::with_capacity(20));
         let state = Arc::new(ServiceState {
-            host_node,
             socket,
             queries_outbound,
             timeout_ms,
@@ -42,21 +43,14 @@ impl Messenger {
         self.service.send_message(message).await
     }
 
-    pub async fn query(&self, method: QueryMethod, to: SocketAddr) -> QueryResult {
-        self.service.query(method, to).await
+    pub async fn query(&self, query: &Query) -> QueryResult {
+        self.service.query(query).await
     }
 }
 
-type QueryHandler = Option<Box<dyn AsyncHandler + Sync + Send>>;
-pub trait AsyncHandler {
-    fn call(&self, result_base: MessageBase, query: Query) -> BoxFuture<'static, QueryResult>;
-}
-impl<T, F> AsyncHandler for T
-where
-    T: Fn(MessageBase, Query) -> F,
-    F: Future<Output = QueryResult> + Send + 'static,
-{
-    fn call(&self, result_base: MessageBase, query: Query) -> BoxFuture<'static, QueryResult> {
-        Box::pin(self(result_base, query))
-    }
+pub type WrappedQueryHandler = Arc<dyn QueryHandler + Send + Sync>;
+
+#[async_trait]
+pub trait QueryHandler {
+    async fn handle_query(&self, query: Query) -> QueryResult;
 }

@@ -1,11 +1,11 @@
 use super::*;
+use simple_error::bail;
 use std::sync::atomic::Ordering;
 pub struct ServiceState {
     pub socket:           UdpSocket,
     pub queries_outbound: Mutex<Vec<OutstandingQuery>>,
-    pub host_node:        NodeInfo,
     pub timeout_ms:       u16,
-    pub queries_inbound:  QueryHandler,
+    pub queries_inbound:  Option<WrappedQueryHandler>,
     pub packet_num:       AtomicUsize,
 }
 
@@ -65,8 +65,7 @@ impl Service {
         match message {
             Message::Query(q) =>
                 if let Some(handler) = &self.state.queries_inbound {
-                    let base = self.build_message_base(q.received_from_addr.unwrap(), q.transaction_id.clone());
-                    self.send_message(&handler.call(base, q).await.into()).await.log()
+                    self.send_message(&handler.handle_query(q).await.into()).await.log()
                 } else {
                     debug!("Query received by read only service. Dropped.");
                 },
@@ -82,24 +81,21 @@ impl Service {
         }
     }
 
-    pub async fn query(&self, method: QueryMethod, to: SocketAddr) -> QueryResult {
-        let query = self.build_message_base(to, rand::random::<u32>().to_string()).to_query(method);
+    pub async fn query(&self, query: &Query) -> QueryResult {
         let (return_tx, return_rx) = oneshot::channel();
         {
             let mut queue = self.state.queries_outbound.lock().await;
             queue.push(OutstandingQuery { transaction_id: query.transaction_id.clone(), return_value: return_tx });
         }
         debug!("Query [{}] added to outstanding", query.transaction_id);
-        let message = Message::Query(query);
-        self.send_message(&message).await.map_err(|e| {
-            self.build_message_base(self.state.host_node.addr, "".to_owned()).to_error_generic(&e.to_string())
-        })?;
+        let message = query.clone().to_message();
+        self.send_message(&message).await.map_err(|e| message.base().clone().to_error_generic(&e.to_string()))?;
 
         let sleep = time::sleep(Duration::from_millis(self.state.timeout_ms.into()));
         tokio::select! {
             m = return_rx => {
                 m.map_or_else(
-                |e|Result::Err(self.build_message_base(self.state.host_node.addr, "".to_owned()).to_error_generic(&e.to_string())),|r|r) }
+                |e|Result::Err(message.base().clone().to_error_generic(&e.to_string())),|r|r) }
             _ = sleep => {
                 self.remove_from_queue(&message.transaction_id).await;
                 info!("Query [{}] timed out", message.transaction_id);
@@ -115,6 +111,10 @@ impl Service {
     }
 
     pub async fn send_message(&self, message: &Message) -> SimpleResult<()> {
+        if !message.base().read_only && self.state.queries_inbound.is_none() {
+            bail!("read only false but no query handler available")
+        }
+
         let packet = self.state.packet_num.fetch_add(1, Ordering::Relaxed);
         info!(
             " {} : Sending {} [{}] to {}",
@@ -129,14 +129,5 @@ impl Service {
         trace!(" {} : Sending: {}", packet, utils::safe_string_from_slice(&slice));
         try_with!(self.state.socket.send_to(&slice, addr).await, "Send failed");
         Ok(())
-    }
-
-    pub fn build_message_base(&self, to: SocketAddr, transaction_id: String) -> MessageBase {
-        MessageBase::builder()
-            .sender_id(self.state.host_node.id)
-            .transaction_id(transaction_id)
-            .destination_addr(to)
-            .read_only(self.state.queries_inbound.is_none())
-            .build()
     }
 }

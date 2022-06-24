@@ -1,7 +1,8 @@
 use crate::u160::U160;
+use serde_derive::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 pub const IPV4_DHT_NODE_BYTES_LEN: usize = 26;
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeInfo {
     pub id:   U160,
     pub addr: SocketAddr,

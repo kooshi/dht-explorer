@@ -1,10 +1,13 @@
 use crate::{node_info::NodeInfo, u160::U160};
+use serde_derive::{Deserialize, Serialize};
+use simple_error::SimpleResult;
+use std::path::PathBuf;
 
 const MAX_BUCKET_INDEX: u8 = 159;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Bucket {
-    host_node:    NodeInfo,
+    own_id:       U160,
     bucket_index: u8,
     k_size:       u8,
     nodes:        Vec<NodeInfo>,
@@ -12,8 +15,12 @@ pub struct Bucket {
 }
 
 impl Bucket {
-    pub fn root(host_node: NodeInfo, k_size: u8) -> Self {
-        Self { host_node, k_size, nodes: Vec::with_capacity(k_size as usize), next_bucket: None, bucket_index: 0 }
+    pub fn root(own_id: U160, k_size: u8) -> Self {
+        Self { own_id, k_size, nodes: Vec::with_capacity(k_size as usize), next_bucket: None, bucket_index: 0 }
+    }
+
+    pub fn id(&self) -> U160 {
+        self.own_id
     }
 
     pub fn add(&mut self, node: NodeInfo) {
@@ -73,7 +80,7 @@ impl Bucket {
         }
 
         self.next_bucket = Some(Box::new(Bucket {
-            host_node:    self.host_node,
+            own_id:       self.own_id,
             k_size:       self.k_size,
             nodes:        Vec::with_capacity(self.k_size as usize),
             next_bucket:  None,
@@ -92,11 +99,19 @@ impl Bucket {
     }
 
     fn belongs_here(&self, node: &NodeInfo) -> bool {
-        self.host_node.distance(node).get_bit(self.bucket_index)
+        self.own_id.distance(node.id).get_bit(self.bucket_index)
     }
 
     fn id_belongs_here(&self, id: U160) -> bool {
-        self.host_node.id.distance(id).get_bit(self.bucket_index)
+        self.own_id.distance(id).get_bit(self.bucket_index)
+    }
+
+    pub fn save_to_file(&self, path: PathBuf) -> SimpleResult<()> {
+        todo!()
+    }
+
+    pub fn load_from_file(path: PathBuf) -> SimpleResult<Self> {
+        todo!()
     }
 }
 
@@ -109,11 +124,10 @@ mod tests {
     #[test]
     fn fill() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-        let host = NodeInfo { id: U160::empty(), addr: socket };
-        let mut bucket = Bucket::root(host, 8);
+        let mut bucket = Bucket::root(U160::empty(), 8);
         let test_node = NodeInfo { id: U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"), addr: socket };
         bucket.add(test_node);
-        for _ in 0..1_000_000 {
+        for _ in 0..10_000 {
             bucket.add(NodeInfo { id: U160::rand() >> (rand::random::<u8>() % 161), addr: socket })
         }
         bucket.add(test_node); //update
@@ -124,8 +138,7 @@ mod tests {
     #[test]
     fn lookup() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-        let host = NodeInfo { id: U160::empty(), addr: socket };
-        let mut bucket = Bucket::root(host, 30);
+        let mut bucket = Bucket::root(U160::empty(), 30);
         for _ in 0..60 {
             bucket.add(NodeInfo { id: U160::rand() >> (rand::random::<u8>() % 161), addr: socket })
         }
