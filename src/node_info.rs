@@ -1,8 +1,8 @@
-use crate::u160::U160;
+use crate::{node::Node, u160::U160};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::{fmt::{Debug, Display}, net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}};
 pub const IPV4_DHT_NODE_BYTES_LEN: usize = 26;
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct NodeInfo {
     pub id:   U160,
     pub addr: SocketAddr,
@@ -36,6 +36,17 @@ impl NodeInfo {
             u16::from_be_bytes(portbytes),
         );
         Self { id, addr }
+    }
+}
+
+impl Display for NodeInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}-{}]", self.id, self.addr)
+    }
+}
+impl Debug for NodeInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}-{}]", self.id, self.addr)
     }
 }
 

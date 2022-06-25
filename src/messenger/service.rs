@@ -45,7 +45,6 @@ impl Service {
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
                 Err(e) => {
                     error!("Reading from Socket: {}", e);
-                    panic!("{}", e)
                 }
             }
         }
@@ -67,7 +66,7 @@ impl Service {
                 if let Some(handler) = &self.state.queries_inbound {
                     self.send_message(&handler.handle_query(q).await.into()).await.log()
                 } else {
-                    debug!("Query received by read only service. Dropped.");
+                    warn!("Query received by read only service. Dropped.");
                 },
             Message::Response(r) => self.return_result(&id, Ok(r)).await,
             Message::Error(e) => self.return_result(&id, Err(e)).await,
@@ -76,7 +75,7 @@ impl Service {
 
     async fn return_result(&self, id: &str, result: QueryResult) {
         if let Some(waiting) = self.remove_from_queue(id).await {
-            debug!("Returning value for [{}]", id);
+            trace!("Returning value for [{}]", id);
             waiting.return_value.send(result).ok();
         }
     }
@@ -87,7 +86,7 @@ impl Service {
             let mut queue = self.state.queries_outbound.lock().await;
             queue.push(OutstandingQuery { transaction_id: query.transaction_id.clone(), return_value: return_tx });
         }
-        debug!("Query [{}] added to outstanding", query.transaction_id);
+        trace!("Query [{}] added to outstanding", query.transaction_id);
         let message = query.clone().to_message();
         self.send_message(&message).await.map_err(|e| message.base().clone().to_error_generic(&e.to_string()))?;
 
@@ -98,7 +97,7 @@ impl Service {
                 |e|Result::Err(message.base().clone().to_error_generic(&e.to_string())),|r|r) }
             _ = sleep => {
                 self.remove_from_queue(&message.transaction_id).await;
-                info!("Query [{}] timed out", message.transaction_id);
+                warn!("Query [{}] timed out", message.transaction_id);
                 Result::Err(message.base().clone().to_error_generic("Timeout"))
             }
         }
@@ -113,6 +112,10 @@ impl Service {
     pub async fn send_message(&self, message: &Message) -> SimpleResult<()> {
         if !message.base().read_only && self.state.queries_inbound.is_none() {
             bail!("read only false but no query handler available")
+        }
+
+        if cfg!(debug_assertions) {
+            time::sleep(Duration::from_millis(1000)).await;
         }
 
         let packet = self.state.packet_num.fetch_add(1, Ordering::Relaxed);

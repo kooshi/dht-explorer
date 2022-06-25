@@ -1,4 +1,5 @@
 use crate::{node_info::NodeInfo, u160::U160};
+use log::{debug, trace};
 use serde::{self, ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 use simple_error::{try_with, SimpleResult};
 use std::path::PathBuf;
@@ -48,8 +49,10 @@ impl Bucket {
                 self.nodes.swap(index, index + 1);
                 index += 1;
             }
+            trace!("Bumped {} in bucket {}", node, self.bucket_index);
         } else if self.nodes.len() < self.k_size.into() {
             self.nodes.push(node);
+            trace!("Stored {} in bucket {}", node, self.bucket_index);
         }
     }
 
@@ -96,6 +99,7 @@ impl Bucket {
                 self.next_bucket.as_mut().unwrap().add(self.nodes.swap_remove(index));
             }
         }
+        debug!("Created bucket {}", self.bucket_index + 1);
         true
     }
 

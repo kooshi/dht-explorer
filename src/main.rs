@@ -26,8 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = SocketAddr::from_str(&opt.bind_v4)?;
 
     let node = Node::new(addr, None, true).await?;
-    let response: Message = node.ping(peer).await.into();
-    println!("RESPONSE: {:?}", response);
+    node.bootstrap(peer).await?;
 
     Ok(())
 }

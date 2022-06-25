@@ -1,10 +1,10 @@
 use crate::{bucket::Bucket, messenger::{self, message::{MessageBase, Query, QueryResult, ResponseKind}, Messenger, QueryHandler, WrappedQueryHandler}, node_info::NodeInfo, u160::U160};
 use async_trait::async_trait;
 use messenger::message::QueryMethod;
+use rand::{seq::SliceRandom, thread_rng};
 use simple_error::SimpleResult;
 use std::{net::SocketAddr, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
 use tokio::sync::Mutex;
-
 pub struct Node {
     messenger: Messenger,
     state:     Arc<NodeState>,
@@ -21,8 +21,37 @@ impl Node {
         Ok(Node { messenger, state })
     }
 
-    pub async fn ping(&self, to: SocketAddr) -> QueryResult {
-        self.messenger.query(&self.message_base(to).to_query(QueryMethod::Ping)).await
+    pub async fn bootstrap(&self, bootstrap_node: SocketAddr) -> SimpleResult<()> {
+        self.send_find_node(bootstrap_node, self.state.info.id).await;
+        while let None = self.find_node(self.state.info.id).await {
+            //self.find_node(U160::rand()).await;
+        }
+        self.state.bucket.lock().await.save_to_file("./found_nodes.ben".into()).await?;
+        Ok(())
+    }
+
+    pub async fn find_node(&self, id: U160) -> Option<NodeInfo> {
+        let closest_known = self.state.bucket.lock().await.lookup(id); //.choose(&mut rand::thread_rng());
+        if let Some(target) = closest_known.iter().find(|n| n.id == id) {
+            return Some(target.clone());
+        }
+        self.send_find_node(closest_known.choose(&mut thread_rng()).unwrap().addr, id).await;
+        None
+    }
+
+    async fn send_find_node(&self, to: SocketAddr, id: U160) {
+        match self.messenger.query(&self.message_base(to).to_query(QueryMethod::FindNode(id))).await {
+            Ok(r) => {
+                self.state.bucket.lock().await.add(NodeInfo { addr: r.received_from_addr.unwrap(), id: r.sender_id });
+                if let ResponseKind::KNearest(nodes) = r.kind {
+                    let mut bucket = self.state.bucket.lock().await;
+                    for n in nodes {
+                        bucket.add(n);
+                    }
+                }
+            }
+            Err(e) => (),
+        }
     }
 
     fn message_base(&self, to: SocketAddr) -> MessageBase {
