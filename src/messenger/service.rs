@@ -77,10 +77,16 @@ impl Service {
         if let Some(waiting) = self.remove_from_queue(id).await {
             trace!("Returning value for [{}]", id);
             waiting.return_value.send(result).ok();
+        } else {
+            warn!("No one waiting for response [{}]", id);
         }
     }
 
     pub async fn query(&self, query: &Query) -> QueryResult {
+        if cfg!(debug_assertions) && !cfg!(test) {
+            time::sleep(Duration::from_millis(1000)).await;
+        }
+
         let (return_tx, return_rx) = oneshot::channel();
         {
             let mut queue = self.state.queries_outbound.lock().await;
@@ -112,10 +118,6 @@ impl Service {
     pub async fn send_message(&self, message: &Message) -> SimpleResult<()> {
         if !message.base().read_only && self.state.queries_inbound.is_none() {
             bail!("read only false but no query handler available")
-        }
-
-        if cfg!(debug_assertions) {
-            time::sleep(Duration::from_millis(1000)).await;
         }
 
         let packet = self.state.packet_num.fetch_add(1, Ordering::Relaxed);

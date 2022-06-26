@@ -19,7 +19,12 @@ impl<'de> Deserialize<'de> for U160 {
                 formatter.write_str("expected 20 big endian bytes")
             }
 
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> {
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            where E: serde::de::Error {
+                if v.len() != 20 {
+                    return Err(Error::invalid_length(v.len(), &self));
+                }
+
                 let mut bytes = [0_u8; 20];
                 bytes.copy_from_slice(v);
                 Ok(U160::from_be_bytes(&bytes))

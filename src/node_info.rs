@@ -1,4 +1,4 @@
-use crate::{node::Node, u160::U160};
+use crate::{u160::U160};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{fmt::{Debug, Display}, net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}};
 pub const IPV4_DHT_NODE_BYTES_LEN: usize = 26;

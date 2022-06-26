@@ -1,8 +1,9 @@
-use crate::{node::Node, node_info::NodeInfo, u160::U160};
+use crate::{node_info::NodeInfo, u160::U160};
 use bucket::Bucket;
-use simple_error::{SimpleError, SimpleResult};
-use std::{collections::{HashSet, VecDeque}, path::PathBuf};
-use tokio::sync::{Mutex, RwLock};
+use log::debug;
+use simple_error::SimpleResult;
+use std::{collections::VecDeque, path::PathBuf};
+use tokio::sync::RwLock;
 mod bucket;
 
 pub struct Router {
@@ -47,5 +48,6 @@ impl Router {
             }
         }
         self.buckets.remove(id);
+        debug!("Banned id {}", id);
     }
 }

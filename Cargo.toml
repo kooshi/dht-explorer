@@ -8,8 +8,9 @@ edition = "2021"
 
 [dependencies]
 #environment and runtime
+ctor = "0.1.22"
 log = "0.4.17"
-stderrlog = "0.5.1"
+fern = { version = "0.6.1", features = ["colored"] }
 structopt = "0.3.21"
 simple-error = "0.2"
 futures = "0.3"

@@ -3,7 +3,7 @@ use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "DHT", about = "do dht stuff")]
-pub struct Opt {
+pub struct Parameters {
     #[structopt(short, long, default_value = "0.0.0.0:6881", about = "UDP ad.dr.es.ss:port")]
     pub bind_v4: String,
 
@@ -27,12 +27,16 @@ pub struct Opt {
     #[structopt(short, long = "no-verify-id", about = "allows nodes with ips that don't match their id")]
     pub no_verify_id: bool,
 
-    #[structopt(short = "q", long = "quiet")]
-    pub quiet: bool,
-
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
-    pub verbose: usize,
-
     #[structopt(long)]
-    pub timestamps: Option<stderrlog::Timestamp>,
+    pub log_no_color:   bool,
+    #[structopt(default_value = "Debug")]
+    pub log_level:      log::LevelFilter,
+    #[structopt(long)]
+    pub log_std_level:  Option<log::LevelFilter>,
+    #[structopt(long)]
+    pub log_file_level: Option<log::LevelFilter>,
+    #[structopt(long, default_value = "./target/", about = "log dir")]
+    pub log_dir:        String,
+    #[structopt(long, default_value = "log-%Y-%m-%d-%H-%M-%S.txt", about = "log file with chrono timestamps")]
+    pub log_file:       String,
 }

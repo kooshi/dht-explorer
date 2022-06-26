@@ -21,6 +21,7 @@ impl<T> LogErrExt for SimpleResult<T> {
         self.err().iter().for_each(|e| error!("{} {:?}", s, e))
     }
 }
+
 // #[macro_export]
 // macro_rules! err_trc {
 //     () => {
