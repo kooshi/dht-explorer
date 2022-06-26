@@ -15,6 +15,7 @@ simple-error = "0.2"
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1.56"
+async-recursion = "1.0.0"
 
 #boilerplate sucks
 typed-builder = "0.10.0"

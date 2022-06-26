@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 #![feature(async_closure)]
-mod bucket;
 mod messenger;
 mod node;
 pub(crate) mod node_info;
 mod options;
+mod router;
 mod u160;
 mod utils;
 use crate::{messenger::message::Message, node::Node};
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let peer = require_with!(opt.peer.to_socket_addrs()?.next(), "invalid peer address");
     let addr = SocketAddr::from_str(&opt.bind_v4)?;
 
-    let node = Node::new(addr, None, true).await?;
+    let node = Node::new(addr, true).await?;
     node.bootstrap(peer).await?;
 
     Ok(())
