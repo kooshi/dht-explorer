@@ -5,7 +5,7 @@ use log::error;
 use messenger::message::QueryMethod;
 use rand::{seq::SliceRandom, thread_rng};
 use simple_error::{try_with, SimpleResult};
-use std::{net::SocketAddr, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
+use std::{net::SocketAddr, str::FromStr, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
 
 #[derive(Clone)]
 pub struct Node {
@@ -27,8 +27,7 @@ impl Node {
             self.messenger.query(&self.message_base(bootstrap_node).to_query(QueryMethod::Ping)).await,
             "could not reach bootstrap node"
         );
-        self.send_find_node(NodeInfo { id: response.sender_id, addr: bootstrap_node }, self.state.router.own_id())
-            .await;
+        self.send_find_node(response.origin, self.state.router.own_id()).await;
         while let None = self.find_node(self.state.router.own_id()).await {
             //self.find_node(U160::rand()).await;
         }
@@ -54,7 +53,7 @@ impl Node {
     async fn send_find_node(&self, to: NodeInfo, id: U160) {
         match self.messenger.query(&self.message_base(to.addr).to_query(QueryMethod::FindNode(id))).await {
             Ok(r) => {
-                self.state.router.add(NodeInfo { addr: r.received_from_addr.unwrap(), id: r.sender_id }).await;
+                self.state.router.add(r.origin).await;
                 if let ResponseKind::KNearest(nodes) = r.kind {
                     for n in nodes {
                         self.state.router.add(n).await;
@@ -70,7 +69,10 @@ impl Node {
 
     fn message_base(&self, to: SocketAddr) -> MessageBase {
         MessageBase::builder()
-            .sender_id(self.state.router.own_id())
+            .origin(NodeInfo {
+                id:   self.state.router.own_id(),
+                addr: SocketAddr::from_str("127.0.0.1:1337").unwrap(),
+            }) //TODO fix addr later, doesn't really matter
             .transaction_id(hex::encode(self.state.transaction.fetch_add(1, Ordering::Relaxed).to_be_bytes()))
             .destination_addr(to)
             .read_only(self.state.read_only)
@@ -93,13 +95,12 @@ impl QueryHandler for NodeState {
     async fn handle_query(&self, query: Query) -> QueryResult {
         assert!(!self.read_only);
         if !query.read_only {
-            let node = NodeInfo { id: query.sender_id, addr: query.received_from_addr.unwrap() };
-            self.router.add(node).await;
+            self.router.add(query.origin).await;
         }
         let response_base = MessageBase::builder()
-            .sender_id(self.router.own_id())
+            .origin(NodeInfo { id: self.router.own_id(), addr: SocketAddr::from_str("127.0.0.1:1337").unwrap() }) //TODO fix addr later, doesn't really matter
             .transaction_id(query.transaction_id.clone())
-            .destination_addr(query.received_from_addr.unwrap())
+            .destination_addr(query.origin.addr)
             .build();
         match query.method {
             QueryMethod::Ping => Ok(response_base.to_response(ResponseKind::Ok)),

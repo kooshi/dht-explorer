@@ -1,19 +1,13 @@
 use super::{kmsg::{socket_addr_wrapper::SocketAddrWrapper, *}, *};
+use crate::node::Node;
 use serde::{de, Deserialize, Deserializer, Serialize};
-use simple_error::{bail, map_err_with, simple_error, SimpleResult};
+use simple_error::{bail, map_err_with, simple_error, try_with, SimpleResult};
 use std::fmt::Display;
 
 impl Serialize for Message {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: serde::Serializer {
         self.to_kmsg().serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for Message {
-    fn deserialize<D>(deserializer: D) -> Result<Message, D::Error>
-    where D: Deserializer<'de> {
-        Message::from_kmsg(KMessage::deserialize(deserializer)?).map_err(|e| de::Error::custom(e))
     }
 }
 
@@ -64,14 +58,8 @@ impl Message {
     }
 
     pub fn receive(bytes: &[u8], from: SocketAddr) -> SimpleResult<Self> {
-        Self::from_bytes(bytes).map(|mut s| {
-            s.base_mut().received_from_addr = Some(from);
-            s
-        })
-    }
-
-    pub fn from_bytes(bytes: &[u8]) -> SimpleResult<Self> {
-        map_err_with!(bt_bencode::from_slice(bytes), "error deserializing message")
+        let k: KMessage = try_with!(bt_bencode::from_slice(bytes), "error deserializing message");
+        Self::from_kmsg(from, k)
     }
 
     pub fn to_bytes(&self) -> SimpleResult<Vec<u8>> {
@@ -85,7 +73,7 @@ impl Message {
             .read_only(self.read_only);
         match &self {
             Message::Query(q) => {
-                let mut args = kmsg::MessageArgs::builder().id(self.sender_id).build();
+                let mut args = kmsg::MessageArgs::builder().id(self.origin.id).build();
                 let builder = builder.message_type(kmsg::Y_QUERY);
                 let builder = match &q.method {
                     QueryMethod::Ping => builder.query_method(Q_PING),
@@ -111,7 +99,7 @@ impl Message {
             }
             Message::Response(r) => {
                 let builder = builder.message_type(kmsg::Y_RESPONSE);
-                let mut response = response::KResponse::builder().id(self.sender_id).build();
+                let mut response = response::KResponse::builder().id(self.origin.id).build();
                 match &r.kind {
                     ResponseKind::Ok => (),
                     ResponseKind::KNearest(nodes) =>
@@ -128,13 +116,12 @@ impl Message {
         }
     }
 
-    pub fn from_kmsg(kmsg: KMessage) -> SimpleResult<Self> {
+    pub fn from_kmsg(origin_addr: SocketAddr, kmsg: KMessage) -> SimpleResult<Self> {
         let mut base = MessageBase {
-            received_from_addr: None,
-            transaction_id:     kmsg.transaction_id,
-            sender_id:          U160::empty(),
-            destination_addr:   if let Some(wrap) = kmsg.peer_ip { wrap.socket_addr } else { None },
-            read_only:          if let Some(ro) = kmsg.read_only { ro } else { false },
+            origin:           NodeInfo { id: U160::empty(), addr: origin_addr },
+            transaction_id:   kmsg.transaction_id,
+            destination_addr: if let Some(wrap) = kmsg.peer_ip { wrap.socket_addr } else { None },
+            read_only:        if let Some(ro) = kmsg.read_only { ro } else { false },
         };
 
         let message = match kmsg.message_type.as_str() {
@@ -145,7 +132,7 @@ impl Message {
             kmsg::Y_QUERY => {
                 let err = simple_error!("stated query type but no query data");
                 if let Some(args) = kmsg.arguments {
-                    base.sender_id = args.id;
+                    base.origin = NodeInfo { id: args.id, addr: origin_addr };
                     Message::Query(Query {
                         base,
                         method: match kmsg.query_method.ok_or(err.clone())?.as_str() {
@@ -165,7 +152,7 @@ impl Message {
             kmsg::Y_RESPONSE => {
                 let err = simple_error!("stated response type but no response data");
                 if let Some(response) = kmsg.response {
-                    base.sender_id = response.id;
+                    base.origin = NodeInfo { id: response.id, addr: origin_addr };
                     Message::Response(Response {
                         base,
                         kind: if let Some(nodes) = response.nodes {
@@ -236,10 +223,11 @@ mod test {
 
     #[test]
     pub fn ping() {
+        let addr = SocketAddr::from_str("127.0.0.1:1337").unwrap();
         let msg = MessageBase::builder()
-            .sender_id(U160::rand())
+            .origin(NodeInfo { id: U160::rand(), addr })
             .transaction_id("test".to_string())
-            .destination_addr(SocketAddr::from_str("127.0.0.1:1337").unwrap().into())
+            .destination_addr(addr.into())
             .read_only(true)
             .build()
             .to_query(QueryMethod::Ping)
@@ -248,7 +236,7 @@ mod test {
         let msg = bt_bencode::to_vec(&msg).unwrap();
         println!("bencode: {}", utils::safe_string_from_slice(&msg));
 
-        let msg: Message = bt_bencode::from_slice(&msg).unwrap();
+        let msg: Message = Message::receive(&msg, SocketAddr::from_str("127.127.127.127:127").unwrap()).unwrap();
         println!("{:?}", msg);
     }
 }

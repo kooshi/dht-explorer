@@ -1,5 +1,7 @@
 extern crate hex;
-use std::{fmt, ops::*};
+use crate::utils::{Ipv4AddrExt, Ipv6AddrExt};
+use crc32c::crc32c;
+use std::{fmt, net::IpAddr, ops::*};
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct U160 {
@@ -8,6 +10,29 @@ pub struct U160 {
 }
 
 impl U160 {
+    //bep42
+    pub fn from_ip(addr: &IpAddr) -> Self {
+        let r = rand::random::<u8>() & 0x07_u8;
+        Self::from_ip_with_r(addr, r)
+    }
+
+    fn from_ip_with_r(addr: &IpAddr, r: u8) -> Self {
+        let pfx = match addr {
+            IpAddr::V4(ip) => crc32c(&((ip.to_u32() & 0x030f3fff_u32) | ((r as u32) << 29)).to_be_bytes()),
+            IpAddr::V6(ip) => crc32c(&((ip.ms_u64() & 0x0103070f1f3f7fff_u64) | ((r as u64) << 61)).to_be_bytes()),
+        };
+        let msbytes = (rand::random::<u128>() | 0xfffff800_00000000_00000000_00000000_u128) & ((pfx as u128) << 96);
+        let lsbytes = (rand::random::<u32>() | 0x00000007_u32) & (r as u32);
+        Self::new(msbytes, lsbytes)
+    }
+
+    pub fn validate(&self, addr: &IpAddr) -> bool {
+        let r = self.lsbytes.to_be_bytes()[3] & 0x07_u8;
+        let test = Self::from_ip_with_r(addr, r);
+        let filter = Self::new(0xfffff800_00000000_00000000_00000000_u128, 0x00000007_u32);
+        (*self & filter) == (test & filter)
+    }
+
     pub fn new(msbytes: u128, lsbytes: u32) -> Self {
         Self { msbytes, lsbytes }
     }
@@ -138,6 +163,7 @@ impl fmt::Debug for U160 {
 #[cfg(test)]
 mod tests {
     use super::U160;
+    use std::{net::IpAddr, str::FromStr};
 
     #[test]
     fn new() {
@@ -238,5 +264,30 @@ mod tests {
 
         assert_eq!(U160::rand() >> 160, U160::empty());
         assert_eq!(U160::rand() << 160, U160::empty());
+    }
+
+    #[test]
+    fn bep42() {
+        assert!(
+            U160::from_hex("5fbfbff10c5d6a4ec8a88e4c6ab4c28b95eee401")
+                .validate(&IpAddr::from_str("124.31.75.21").unwrap())
+        );
+        assert!(
+            U160::from_hex("5a3ce9c14e7a08645677bbd1cfe7d8f956d53256")
+                .validate(&IpAddr::from_str("21.75.31.124").unwrap())
+        );
+        assert!(
+            U160::from_hex("a5d43220bc8f112a3d426c84764f8c2a1150e616")
+                .validate(&IpAddr::from_str("65.23.51.170").unwrap())
+        );
+        assert!(
+            U160::from_hex("1b0321dd1bb1fe518101ceef99462b947a01ff41")
+                .validate(&IpAddr::from_str("84.124.73.14").unwrap())
+        );
+        assert!(
+            U160::from_hex("e56f6cbf5b7c4be0237986d5243b87aa6d51305a")
+                .validate(&IpAddr::from_str("43.213.53.83").unwrap())
+        );
+        assert!(!U160::rand().validate(&IpAddr::from_str("43.213.53.83").unwrap()))
     }
 }

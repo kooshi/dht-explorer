@@ -95,14 +95,12 @@ impl Error {
 
 #[derive(TypedBuilder, Debug, Clone, PartialEq, Eq)]
 pub struct MessageBase {
-    pub sender_id:          U160,
-    pub transaction_id:     String,
+    pub origin:           NodeInfo,
+    pub transaction_id:   String,
     #[builder(setter(strip_option))]
-    pub destination_addr:   Option<SocketAddr>,
+    pub destination_addr: Option<SocketAddr>,
     #[builder(default)]
-    pub read_only:          bool,
-    #[builder(default, setter(skip))]
-    pub received_from_addr: Option<SocketAddr>,
+    pub read_only:        bool,
     //pub version:            [u8; 4],
 }
 

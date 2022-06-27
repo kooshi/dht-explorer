@@ -1,4 +1,4 @@
-use crate::{u160::U160};
+use crate::u160::U160;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{fmt::{Debug, Display}, net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}};
 pub const IPV4_DHT_NODE_BYTES_LEN: usize = 26;
@@ -9,6 +9,14 @@ pub struct NodeInfo {
 }
 
 impl NodeInfo {
+    pub fn from_addr(addr: SocketAddr) -> NodeInfo {
+        NodeInfo { id: U160::from_ip(&addr.ip()), addr }
+    }
+
+    pub fn validate(&self) -> bool {
+        self.id.validate(&self.addr.ip())
+    }
+
     pub fn distance(&self, other: &Self) -> U160 {
         self.id.distance(other.id)
     }

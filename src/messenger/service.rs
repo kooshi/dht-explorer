@@ -52,13 +52,7 @@ impl Service {
 
     async fn handle_received(self, packet: usize, message: Message) {
         debug!(" {} : Received: {:?}", packet, message);
-        info!(
-            " {} : Received {} [{}] from {}",
-            packet,
-            message,
-            message.transaction_id,
-            message.received_from_addr.map_or("<unknown>".to_string(), |a| a.to_string())
-        );
+        info!(" {} : Received {} [{}] from {}", packet, message, message.transaction_id, message.origin.addr);
 
         let id = message.transaction_id.to_owned();
         match message {
@@ -126,7 +120,7 @@ impl Service {
             packet,
             message,
             message.transaction_id,
-            message.destination_addr.map_or("<unknown>".to_string(), |a| a.to_string())
+            require_with!(message.destination_addr, "No send address")
         );
         debug!(" {} : Sending: {:?}", packet, message);
         let slice = message.to_bytes()?;

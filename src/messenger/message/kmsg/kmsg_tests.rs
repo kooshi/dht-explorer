@@ -117,5 +117,8 @@ pub fn error_response() {
     let msg = bt_bencode::from_slice::<KMessage>(&buf).unwrap();
     println!("{:?}", msg);
 
-    println!("{:#?}", crate::messenger::message::Message::from_kmsg(msg));
+    println!(
+        "{:#?}",
+        crate::messenger::message::Message::from_kmsg(SocketAddr::from_str("0.0.0.0:1234").unwrap(), msg)
+    );
 }

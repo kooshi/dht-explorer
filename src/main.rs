@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![feature(async_closure)]
+#![feature(slice_as_chunks)]
 mod logging;
 mod messenger;
 mod node;
@@ -44,7 +45,7 @@ fn init() {
     #[cfg(not(test))]
     let p = Parameters::from_args();
     #[cfg(test)]
-    let p = Parameters::from_iter(vec!["--log-level", "Debug"]);
+    let p = Parameters::from_iter(vec!["--log-level", "Off"]);
     init_fail!(PARAMS.set(p));
     init_logging();
 }
