@@ -70,6 +70,8 @@ impl Display for Error {
     }
 }
 
+impl std::error::Error for Error {}
+
 impl Query {
     pub fn to_message(self) -> Message {
         Message::Query(self)
@@ -101,7 +103,13 @@ pub struct MessageBase {
     pub read_only:          bool,
     #[builder(default, setter(skip))]
     pub received_from_addr: Option<SocketAddr>,
+    //pub version:            [u8; 4],
 }
+
+// pub struct Version {
+//     client: String,
+//     verison:
+// }
 
 type InfoHash = U160;
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -35,7 +35,7 @@ pub struct Parameters {
     pub log_std_level:  Option<log::LevelFilter>,
     #[structopt(long)]
     pub log_file_level: Option<log::LevelFilter>,
-    #[structopt(long, default_value = "./target/", about = "log dir")]
+    #[structopt(long, default_value = "./logs/", about = "log dir")]
     pub log_dir:        String,
     #[structopt(long, default_value = "log-%Y-%m-%d-%H-%M-%S.txt", about = "log file with chrono timestamps")]
     pub log_file:       String,

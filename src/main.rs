@@ -44,7 +44,7 @@ fn init() {
     #[cfg(not(test))]
     let p = Parameters::from_args();
     #[cfg(test)]
-    let p = Parameters::from_iter(vec!["--log-level", "Trace"]);
+    let p = Parameters::from_iter(vec!["--log-level", "Debug"]);
     init_fail!(PARAMS.set(p));
     init_logging();
 }

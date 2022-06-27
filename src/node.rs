@@ -1,13 +1,15 @@
 use crate::{messenger::{self, message::{MessageBase, Query, QueryResult, ResponseKind}, Messenger, QueryHandler, WrappedQueryHandler}, node_info::NodeInfo, router::Router, u160::U160};
 use async_trait::async_trait;
+use futures::future::join_all;
 use log::error;
 use messenger::message::QueryMethod;
 use rand::{seq::SliceRandom, thread_rng};
-use simple_error::SimpleResult;
+use simple_error::{try_with, SimpleResult};
 use std::{net::SocketAddr, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
 
+#[derive(Clone)]
 pub struct Node {
-    messenger: Messenger,
+    messenger: Arc<Messenger>,
     state:     Arc<NodeState>,
 }
 
@@ -16,12 +18,17 @@ impl Node {
         let router = Router::new("./target/buckets.ben".into()).await?;
         let state = Arc::new(NodeState { router, transaction: AtomicUsize::new(0), read_only });
         let handler: Option<WrappedQueryHandler> = if read_only { None } else { Some(state.clone()) };
-        let messenger = Messenger::new(addr, 500, handler).await?;
+        let messenger = Arc::new(Messenger::new(addr, 500, handler).await?);
         Ok(Node { messenger, state })
     }
 
     pub async fn bootstrap(&self, bootstrap_node: SocketAddr) -> SimpleResult<()> {
-        self.send_find_node(bootstrap_node, self.state.router.own_id()).await;
+        let response = try_with!(
+            self.messenger.query(&self.message_base(bootstrap_node).to_query(QueryMethod::Ping)).await,
+            "could not reach bootstrap node"
+        );
+        self.send_find_node(NodeInfo { id: response.sender_id, addr: bootstrap_node }, self.state.router.own_id())
+            .await;
         while let None = self.find_node(self.state.router.own_id()).await {
             //self.find_node(U160::rand()).await;
         }
@@ -29,16 +36,23 @@ impl Node {
     }
 
     pub async fn find_node(&self, id: U160) -> Option<NodeInfo> {
-        let closest_known = self.state.router.lookup(id).await; //.choose(&mut rand::thread_rng());
+        let closest_known = self.state.router.lookup(id).await;
         if let Some(target) = closest_known.iter().find(|n| n.id == id) {
             return Some(target.clone());
         }
-        self.send_find_node(closest_known.choose(&mut thread_rng()).unwrap().addr, id).await;
+        let mut joins = Vec::with_capacity(closest_known.len());
+        for node in closest_known {
+            let clone = self.clone();
+            joins.push(tokio::spawn(async move {
+                clone.send_find_node(node, id).await;
+            }));
+        }
+        join_all(joins).await;
         None
     }
 
-    async fn send_find_node(&self, to: SocketAddr, id: U160) {
-        match self.messenger.query(&self.message_base(to).to_query(QueryMethod::FindNode(id))).await {
+    async fn send_find_node(&self, to: NodeInfo, id: U160) {
+        match self.messenger.query(&self.message_base(to.addr).to_query(QueryMethod::FindNode(id))).await {
             Ok(r) => {
                 self.state.router.add(NodeInfo { addr: r.received_from_addr.unwrap(), id: r.sender_id }).await;
                 if let ResponseKind::KNearest(nodes) = r.kind {
@@ -48,8 +62,8 @@ impl Node {
                 }
             }
             Err(e) => {
-                self.state.router.ban_id(id).await;
-                error!("Received error response: {}", e)
+                error!("Received error response: {}", e);
+                self.state.router.ban_id(to.id).await;
             }
         }
     }

@@ -1,6 +1,6 @@
 use crate::{node_info::NodeInfo, u160::U160};
 use async_recursion::async_recursion;
-use log::{debug, trace};
+use log::{debug, info, trace};
 use serde::{self, ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 use simple_error::{try_with, SimpleResult};
 use std::{fs::OpenOptions, ops::Deref, path::PathBuf, sync::Arc};
@@ -93,7 +93,7 @@ impl Bucket {
             let mut nodes = self.nodes.write().await;
             if let Some(i) = nodes.iter().position(|n| n.id == id) {
                 let node = nodes.remove(i);
-                trace!("Removed {} from bucket {}", node, self.bucket_index);
+                debug!("Removed {} from bucket {}", node, self.bucket_index);
                 true
             } else {
                 false
@@ -144,10 +144,9 @@ impl Bucket {
         self.own_id.distance(id).get_bit(self.bucket_index)
     }
 
-    pub async fn save_to_file(self, path: PathBuf) -> SimpleResult<()> {
+    pub async fn save_to_file(bucket: Arc<Bucket>, path: PathBuf) -> SimpleResult<()> {
         let file = try_with!(OpenOptions::new().write(true).truncate(true).create(true).open(path), "opening file");
-        let arcself = Arc::new(self);
-        let copy = arcself.clone();
+        let copy = bucket.clone();
         try_with!(
             try_with!(
                 tokio::task::spawn_blocking(move || bt_bencode::to_writer(file, copy.as_ref())).await,
@@ -155,13 +154,27 @@ impl Bucket {
             ),
             "join"
         );
+        info!("Saved {}", bucket.stats().await);
         Ok(())
     }
 
     pub async fn load_from_file(path: PathBuf) -> SimpleResult<Self> {
         let file = try_with!(OpenOptions::new().read(true).open(path), "opening file");
-        let bucket = try_with!(bt_bencode::from_reader(file), "deser");
+        let bucket: Self = try_with!(bt_bencode::from_reader(file), "deser");
+        info!("Loaded {}", bucket.stats().await);
         Ok(bucket)
+    }
+
+    pub async fn stats(&self) -> String {
+        let mut stats = Vec::with_capacity(50);
+        stats.push(self.nodes.read().await.len());
+        let mut next = self.next_bucket.get();
+        while next.is_some() {
+            let bucket = next.unwrap();
+            stats.push(bucket.nodes.read().await.len());
+            next = bucket.next_bucket.get();
+        }
+        format!("{} total nodes in {} buckets", stats.iter().sum::<usize>(), stats.len())
     }
 }
 
@@ -241,6 +254,7 @@ impl PartialEq for Bucket {
 mod tests {
     use super::Bucket;
     use crate::{node_info::NodeInfo, u160::U160, utils};
+    use log::info;
     use std::{net::SocketAddr, ops::Deref, str::FromStr, sync::Arc};
 
     #[tokio::test]
@@ -251,7 +265,7 @@ mod tests {
         bucket.add(test_node).await;
         fill(bucket.clone()).await;
         bucket.add(test_node).await; //update
-        println!("{:?}", bucket);
+        info!("{}", bucket.stats().await);
         assert_eq!(bucket.nodes.write().await.pop().unwrap().id, test_node.id);
     }
 
@@ -273,7 +287,7 @@ mod tests {
         for _ in 0..10 {
             let bucket = bucket.clone();
             joins.push(tokio::spawn(async move {
-                for _ in 0..10_000 {
+                for _ in 0..200 {
                     bucket
                         .add(NodeInfo {
                             id:   U160::rand() >> (rand::random::<u8>() % 161),
@@ -355,16 +369,15 @@ mod tests {
         assert!(tokio::task::spawn_blocking(move || &de == bucket.deref()).await.unwrap());
     }
 
-    //TODO fix blocking/non blocking mix
-    // #[tokio::test]
-    // async fn file() {
-    //     let mut bucket = Arc::new(Bucket::root(U160::empty(), 8));
-    //     fill(bucket).await;
-    //     let path = "./target/bucket_test.ben";
-    //     bucket.deref().save_to_file(path.into()).await.unwrap();
-    //     let b2 = Bucket::load_from_file(path.into()).await.unwrap();
-    //     tokio::fs::remove_file(path).await.unwrap();
+    #[tokio::test]
+    async fn file() {
+        let bucket = Arc::new(Bucket::root(U160::empty(), 8));
+        fill(bucket.clone()).await;
+        let path = "./target/bucket_test.ben";
+        Bucket::save_to_file(bucket.clone(), path.into()).await.unwrap();
+        let b2 = Bucket::load_from_file(path.into()).await.unwrap();
+        tokio::fs::remove_file(path).await.unwrap();
 
-    //     assert!(tokio::task::spawn_blocking(move || &b2 == bucket.deref()).await.unwrap());
-    // }
+        assert!(tokio::task::spawn_blocking(move || &b2 == bucket.deref()).await.unwrap());
+    }
 }

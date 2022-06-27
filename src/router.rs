@@ -1,6 +1,6 @@
 use crate::{node_info::NodeInfo, u160::U160};
 use bucket::Bucket;
-use log::debug;
+use log::{debug, info};
 use simple_error::SimpleResult;
 use std::{collections::VecDeque, path::PathBuf};
 use tokio::sync::RwLock;
@@ -16,7 +16,7 @@ impl Router {
     pub async fn new(bucket_file: PathBuf) -> SimpleResult<Self> {
         let buckets = Bucket::load_from_file(bucket_file)
             .await
-            .unwrap_or_else(|e| Bucket::root(Router::generate_own_id(), K_SIZE));
+            .unwrap_or_else(|_| Bucket::root(Router::generate_own_id(), K_SIZE));
         Ok(Self { buckets, banned_ids: RwLock::new(VecDeque::with_capacity(BAN_COUNT)) })
     }
 
@@ -47,7 +47,9 @@ impl Router {
                 bnd.pop_front();
             }
         }
-        self.buckets.remove(id);
         debug!("Banned id {}", id);
+        if !self.buckets.remove(id).await {
+            info!("Failed to remove {}", id)
+        }
     }
 }
