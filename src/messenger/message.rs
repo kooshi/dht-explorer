@@ -74,22 +74,22 @@ impl Display for Error {
 }
 
 impl Query {
-    pub fn to_message(self) -> Message {
+    pub fn into_message(self) -> Message {
         Message::Query(self)
     }
 }
 impl From<QueryResult> for Message {
     fn from(r: QueryResult) -> Self {
-        r.map_or_else(|e| e.to_message(), |r| r.to_message())
+        r.map_or_else(|e| e.into_message(), |r| r.into_message())
     }
 }
 impl Response {
-    pub fn to_message(self) -> Message {
+    pub fn into_message(self) -> Message {
         Message::Response(self)
     }
 }
 impl Error {
-    pub fn to_message(self) -> Message {
+    pub fn into_message(self) -> Message {
         Message::Error(self)
     }
 }

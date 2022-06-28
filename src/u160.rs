@@ -2,13 +2,13 @@ extern crate hex;
 use crate::utils::{Ipv4AddrExt, Ipv6AddrExt};
 use crc32c::crc32c;
 use std::{fmt, net::IpAddr, ops::*};
-
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct U160 {
     msbytes: u128,
     lsbytes: u32,
 }
 
+#[allow(clippy::unusual_byte_groupings)]
 impl U160 {
     //bep42
     pub fn from_ip(addr: &IpAddr) -> Self {
@@ -19,7 +19,7 @@ impl U160 {
     fn from_ip_with_r(addr: &IpAddr, r: u8) -> Self {
         let pfx = match addr {
             IpAddr::V4(ip) => crc32c(&((ip.to_u32() & 0x030f3fff_u32) | ((r as u32) << 29)).to_be_bytes()),
-            IpAddr::V6(ip) => crc32c(&((ip.ms_u64() & 0x0103070f1f3f7fff_u64) | ((r as u64) << 61)).to_be_bytes()),
+            IpAddr::V6(ip) => crc32c(&((ip.ms_u64() & 0x0103070f_1f3f7fff_u64) | ((r as u64) << 61)).to_be_bytes()),
         };
         let msbytes = (rand::random::<u128>() | 0xfffff800_00000000_00000000_00000000_u128) & ((pfx as u128) << 96);
         let lsbytes = (rand::random::<u32>() | 0x00000007_u32) & (r as u32);
@@ -118,7 +118,7 @@ impl Shr<u8> for U160 {
         let msshift = rhs.min(127);
         let msremain = rhs - msshift;
         let msbytes = if msremain > 0 { 0 } else { self.msbytes >> msshift };
-        let overflow = ((self.msbytes << 127 - msshift) >> msremain >> (127 - 32)) as u32;
+        let overflow = ((self.msbytes << (127 - msshift)) >> msremain >> (127 - 32)) as u32;
 
         let lsshift = rhs.min(31);
         let lsremain = rhs - lsshift;
@@ -211,6 +211,7 @@ mod tests {
         assert_eq!(id, id2);
     }
 
+    #[allow(clippy::unusual_byte_groupings)]
     #[test]
     fn bits() {
         let id = U160::new(0x80000000_00000000_00000000_00000000_u128, 0x80000000_u32);

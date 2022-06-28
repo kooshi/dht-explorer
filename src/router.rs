@@ -28,9 +28,9 @@ impl Router {
         param!()
             .public_ip
             .as_ref()
-            .map_or(None, |ip| IpAddr::from_str(&ip).ok())
+            .and_then(|ip| IpAddr::from_str(ip).ok())
             .map(|ip| U160::from_ip(&ip))
-            .unwrap_or(U160::rand())
+            .unwrap_or_else(U160::rand)
     }
 
     pub async fn add(&self, node: NodeInfo) {

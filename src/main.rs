@@ -15,16 +15,15 @@ use fern::Dispatch;
 use node::Node;
 use parameters::Parameters;
 use simple_error::require_with;
-use std::{error::Error, net::{IpAddr, SocketAddr, ToSocketAddrs}, str::FromStr};
+use std::{error::Error, net::{SocketAddr, ToSocketAddrs}, str::FromStr};
 use structopt::StructOpt;
 use tokio::sync::OnceCell;
-use u160::U160;
 
 static PARAMS: OnceCell<Parameters> = OnceCell::const_new();
 #[macro_export]
 macro_rules! param {
     () => {
-        crate::PARAMS.get().unwrap()
+        $crate::PARAMS.get().unwrap()
     };
 }
 #[macro_export]

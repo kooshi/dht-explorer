@@ -1,4 +1,4 @@
-use crate::{messenger::{self, message::{Error, KnownError, MessageBase, Query, QueryResult, ResponseKind}, Messenger, QueryHandler, WrappedQueryHandler}, node_info::NodeInfo, router::Router, u160::U160};
+use crate::{messenger::{self, message::{KnownError, MessageBase, Query, QueryResult, ResponseKind}, Messenger, QueryHandler, WrappedQueryHandler}, node_info::NodeInfo, router::Router, u160::U160};
 use async_trait::async_trait;
 use futures::future::join_all;
 use log::error;
@@ -23,11 +23,11 @@ impl Node {
 
     pub async fn bootstrap(&self, bootstrap_node: SocketAddr) -> SimpleResult<()> {
         let response = try_with!(
-            self.messenger.query(&self.message_base(bootstrap_node).to_query(QueryMethod::Ping)).await,
+            self.messenger.query(&self.message_base(bootstrap_node).into_query(QueryMethod::Ping)).await,
             "could not reach bootstrap node"
         );
         self.send_find_node(response.origin, self.state.router.own_id()).await;
-        while let None = self.find_node(self.state.router.own_id()).await {
+        while (self.find_node(self.state.router.own_id()).await).is_none() {
             //self.find_node(U160::rand()).await;
         }
         Ok(())
@@ -36,7 +36,7 @@ impl Node {
     pub async fn find_node(&self, id: U160) -> Option<NodeInfo> {
         let closest_known = self.state.router.lookup(id).await;
         if let Some(target) = closest_known.iter().find(|n| n.id == id) {
-            return Some(target.clone());
+            return Some(*target);
         }
         let mut joins = Vec::with_capacity(closest_known.len());
         for node in closest_known {
@@ -50,7 +50,7 @@ impl Node {
     }
 
     async fn send_find_node(&self, to: NodeInfo, id: U160) {
-        match self.messenger.query(&self.message_base(to.addr).to_query(QueryMethod::FindNode(id))).await {
+        match self.messenger.query(&self.message_base(to.addr).into_query(QueryMethod::FindNode(id))).await {
             Ok(r) => {
                 self.state.router.add(r.origin).await;
                 if let ResponseKind::KNearest(nodes) = r.kind {
@@ -102,14 +102,14 @@ impl QueryHandler for NodeState {
             .destination_addr(query.origin.addr)
             .build();
         match query.method {
-            QueryMethod::Ping => Ok(response_base.to_response(ResponseKind::Ok)),
+            QueryMethod::Ping => Ok(response_base.into_response(ResponseKind::Ok)),
             QueryMethod::FindNode(n) =>
-                Ok(response_base.to_response(ResponseKind::KNearest(self.router.lookup(n).await))),
+                Ok(response_base.into_response(ResponseKind::KNearest(self.router.lookup(n).await))),
             QueryMethod::GetPeers(n) =>
-                Ok(response_base.to_response(ResponseKind::KNearest(self.router.lookup(n).await))),
-            QueryMethod::AnnouncePeer(_) => Err(response_base.to_error(KnownError::Server)),
-            QueryMethod::Put(_) => Err(response_base.to_error(KnownError::MethodUnknown)),
-            QueryMethod::Get => Err(response_base.to_error(KnownError::MethodUnknown)),
+                Ok(response_base.into_response(ResponseKind::KNearest(self.router.lookup(n).await))),
+            QueryMethod::AnnouncePeer(_) => Err(response_base.into_error(KnownError::Server)),
+            QueryMethod::Put(_) => Err(response_base.into_error(KnownError::MethodUnknown)),
+            QueryMethod::Get => Err(response_base.into_error(KnownError::MethodUnknown)),
         }
     }
 }

@@ -1,7 +1,6 @@
 use super::{message::*, *};
 use crate::{node_info::{self, NodeInfo}, u160::U160};
 use std::str::FromStr;
-use tokio;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn ping() {
@@ -22,11 +21,11 @@ async fn ping() {
         transaction_id:   b"testing".to_vec(),
         origin:           client_node,
     };
-    let response = client.query(&querybase.to_query(QueryMethod::Ping)).await;
+    let response = client.query(&querybase.into_query(QueryMethod::Ping)).await;
     assert!(response.is_ok());
     let response = response.unwrap();
+    assert!(response.read_only);
     assert_eq!(response.kind, ResponseKind::Ok);
-    assert_eq!(response.read_only, false);
     assert_eq!(response.origin.id, server_id);
     assert_eq!(response.origin.addr, server_node.addr);
     assert_eq!(response.destination_addr, Some(client_node.addr));
@@ -44,7 +43,7 @@ impl QueryHandler for TestHandler {
             transaction_id:   query.transaction_id.clone(),
             origin:           self.info,
         };
-        Ok(returnbase.to_response(ResponseKind::Ok))
+        Ok(returnbase.into_response(ResponseKind::Ok))
     }
 }
 
@@ -66,7 +65,7 @@ async fn timeout_readonly() {
         transaction_id:   b"testing".to_vec(),
         origin:           client_node,
     };
-    let response = client.query(&querybase.to_query(QueryMethod::Ping)).await;
+    let response = client.query(&querybase.into_query(QueryMethod::Ping)).await;
     assert!(if let Err(message::Error { code, description, .. }) = &response {
         *code == 201 && description == "Timeout"
     } else {

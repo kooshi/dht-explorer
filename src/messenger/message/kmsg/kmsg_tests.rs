@@ -41,6 +41,7 @@ pub fn ser_nodes() {
     assert_eq!(nodes, deser_nodes);
 }
 
+#[allow(clippy::field_reassign_with_default)]
 #[test]
 pub fn error() {
     let test_error = Error(201, "Generic".to_owned());

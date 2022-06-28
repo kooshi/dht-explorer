@@ -38,10 +38,11 @@ impl Bucket {
             self.add_or_update(node).await;
             return;
         }
-        if self.next_bucket.get().is_none() && self.nodes.read().await.len() == self.k_size.into() {
-            if !self.make_next_bucket().await {
-                return;
-            }
+        if self.next_bucket.get().is_none()
+            && self.nodes.read().await.len() == self.k_size.into()
+            && !self.make_next_bucket().await
+        {
+            return;
         }
         if !self.belongs_here(&node) {
             self.next_bucket.get().unwrap().add(node).await;
@@ -185,7 +186,7 @@ impl Serialize for Bucket {
         let mut s = serializer.serialize_seq(Some(2))?;
         s.serialize_element(&self.own_id)?;
         s.serialize_element(&self.k_size)?;
-        ser_df(&self, &mut s, 1)?;
+        ser_df(self, &mut s, 1)?;
         s.end()
     }
 }
@@ -208,7 +209,7 @@ impl<'de> Deserialize<'de> for Bucket {
             type Value = Bucket;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str(&format!("expected error code followed by message"))
+                formatter.write_str("expected error code followed by message")
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>

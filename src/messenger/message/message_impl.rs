@@ -125,7 +125,7 @@ impl Message {
 
         let message = match kmsg.message_type.as_str() {
             kmsg::Y_ERROR => {
-                let err = kmsg.error.ok_or(simple_error!("stated error type but no error data"))?;
+                let err = kmsg.error.ok_or_else(|| simple_error!("stated error type but no error data"))?;
                 Message::Error(Error { code: err.0, description: err.1, base })
             }
             kmsg::Y_QUERY => {
@@ -134,7 +134,7 @@ impl Message {
                     base.origin = NodeInfo { id: args.id, addr: origin_addr };
                     Message::Query(Query {
                         base,
-                        method: match kmsg.query_method.ok_or(err.clone())?.as_str() {
+                        method: match kmsg.query_method.ok_or_else(|| err.clone())?.as_str() {
                             kmsg::Q_PING => QueryMethod::Ping,
                             kmsg::Q_FIND_NODE => QueryMethod::FindNode(args.target.ok_or(err)?),
                             kmsg::Q_ANNOUNCE_PEER => QueryMethod::AnnouncePeer(args.info_hash.ok_or(err)?),
@@ -197,19 +197,19 @@ impl Display for Message {
 }
 
 impl MessageBase {
-    pub fn to_error_generic(self, description: &str) -> Error {
+    pub fn into_error_generic(self, description: &str) -> Error {
         Error { code: KnownError::Generic as u16, description: description.to_owned(), base: self }
     }
 
-    pub fn to_error(self, kind: KnownError) -> Error {
+    pub fn into_error(self, kind: KnownError) -> Error {
         Error { code: kind as u16, description: kind.description().to_owned(), base: self }
     }
 
-    pub fn to_query(self, method: QueryMethod) -> Query {
+    pub fn into_query(self, method: QueryMethod) -> Query {
         Query { method, base: self }
     }
 
-    pub fn to_response(self, kind: ResponseKind) -> Response {
+    pub fn into_response(self, kind: ResponseKind) -> Response {
         Response { kind, base: self }
     }
 }
@@ -226,11 +226,11 @@ mod test {
         let msg = MessageBase::builder()
             .origin(NodeInfo { id: U160::rand(), addr })
             .transaction_id(b"test".to_vec())
-            .destination_addr(addr.into())
+            .destination_addr(addr)
             .read_only(true)
             .build()
-            .to_query(QueryMethod::Ping)
-            .to_message();
+            .into_query(QueryMethod::Ping)
+            .into_message();
 
         let msg = bt_bencode::to_vec(&msg).unwrap();
         println!("bencode: {}", utils::safe_string_from_slice(&msg));

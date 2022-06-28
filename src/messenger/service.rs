@@ -93,18 +93,18 @@ impl Service {
             });
         }
         trace!("Query [{:?}] added to outstanding", query.transaction_id);
-        let message = query.clone().to_message();
-        self.send_message(&message).await.map_err(|e| message.base().clone().to_error_generic(&e.to_string()))?;
+        let message = query.clone().into_message();
+        self.send_message(&message).await.map_err(|e| message.base().clone().into_error_generic(&e.to_string()))?;
 
         let sleep = time::sleep(Duration::from_millis(self.state.timeout_ms.into()));
         tokio::select! {
             m = return_rx => {
                 m.map_or_else(
-                |e|Result::Err(message.base().clone().to_error_generic(&e.to_string())),|r|r) }
+                |e|Result::Err(message.base().clone().into_error_generic(&e.to_string())),|r|r) }
             _ = sleep => {
                 self.remove_from_queue(&message.transaction_id, message.origin.addr).await;
                 warn!("Query [{:?}] timed out", message.transaction_id);
-                Result::Err(message.base().clone().to_error_generic("Timeout"))
+                Result::Err(message.base().clone().into_error_generic("Timeout"))
             }
         }
     }

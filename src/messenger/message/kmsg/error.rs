@@ -20,7 +20,7 @@ impl<'de> Deserialize<'de> for Error {
             type Value = Error;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str(&format!("expected error code followed by message"))
+                formatter.write_str("expected error code followed by message")
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>

@@ -9,16 +9,16 @@ pub fn safe_string_from_slice(bytes: &[u8]) -> String {
 }
 
 pub trait LogErrExt {
-    fn log(self) -> ();
-    fn log_with(self, s: &str) -> ();
+    fn log(self);
+    fn log_with(self, s: &str);
 }
 
 impl<T> LogErrExt for SimpleResult<T> {
-    fn log(self) -> () {
+    fn log(self) {
         self.log_with("");
     }
 
-    fn log_with(self, s: &str) -> () {
+    fn log_with(self, s: &str) {
         self.err().iter().for_each(|e| error!("{} {:?}", s, e))
     }
 }

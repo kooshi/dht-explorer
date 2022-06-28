@@ -29,7 +29,7 @@ impl<'de> Deserialize<'de> for SocketAddrWrapper {
             type Value = SocketAddrWrapper;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str(&format!("expected 6 or 18 bytes"))
+                formatter.write_str("expected 6 or 18 bytes")
             }
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> {

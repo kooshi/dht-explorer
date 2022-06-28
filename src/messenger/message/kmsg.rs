@@ -16,17 +16,17 @@ pub(crate) mod response;
 pub(crate) mod serde_extra;
 pub(crate) mod socket_addr_wrapper;
 
-pub const Q_ANNOUNCE_PEER: &'static str = "announce_peer";
-pub const Q_PING: &'static str = "ping";
-pub const Q_FIND_NODE: &'static str = "find_node";
-pub const Q_GET_PEERS: &'static str = "get_peers";
+pub const Q_ANNOUNCE_PEER: &str = "announce_peer";
+pub const Q_PING: &str = "ping";
+pub const Q_FIND_NODE: &str = "find_node";
+pub const Q_GET_PEERS: &str = "get_peers";
 //BEP44
-pub const Q_PUT: &'static str = "put";
-pub const Q_GET: &'static str = "get";
+pub const Q_PUT: &str = "put";
+pub const Q_GET: &str = "get";
 
-pub const Y_QUERY: &'static str = "q";
-pub const Y_RESPONSE: &'static str = "r";
-pub const Y_ERROR: &'static str = "e";
+pub const Y_QUERY: &str = "q";
+pub const Y_RESPONSE: &str = "r";
+pub const Y_ERROR: &str = "e";
 
 // Msg represents messages that nodes in the network send to each other as specified by the protocol.
 // They are also referred to as the KRPC messages.
