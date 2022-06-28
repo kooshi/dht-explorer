@@ -225,7 +225,7 @@ mod test {
         let addr = SocketAddr::from_str("127.0.0.1:1337").unwrap();
         let msg = MessageBase::builder()
             .origin(NodeInfo { id: U160::rand(), addr })
-            .transaction_id("test".to_string())
+            .transaction_id(b"test".to_vec())
             .destination_addr(addr.into())
             .read_only(true)
             .build()

@@ -45,7 +45,8 @@ pub struct KMessage {
     // required: transaction ID
     #[serde(default)] //some errors can cause blank tid
     #[serde(rename = "t")]
-    pub transaction_id: String,
+    #[serde(with = "serde_bytes")]
+    pub transaction_id: Vec<u8>,
 
     // required: type of the message: q for QUERY, r for RESPONSE, e for ERROR
     #[serde(rename = "y")]
@@ -80,7 +81,7 @@ pub struct KMessage {
     #[builder(default, setter(strip_option))]
     pub error: Option<Error>,
 
-    // bep42: outgoing query: requestor ip, incoming query: our ip accodring to the remote
+    // bep42: outgoing query: requestor ip, incoming response: our ip accodring to the remote
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(rename = "ip")]

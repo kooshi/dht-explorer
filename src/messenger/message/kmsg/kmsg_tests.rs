@@ -9,7 +9,7 @@ pub fn find_node() {
     .unwrap();
     println!("{:?}", msg);
     assert_eq!(msg.message_type, Y_QUERY);
-    assert_eq!(msg.transaction_id, "aa");
+    assert_eq!(msg.transaction_id, b"aa".to_vec());
     assert_eq!(msg.query_method.unwrap(), Q_FIND_NODE);
     assert_eq!(msg.arguments.as_ref().unwrap().id, U160::from_be_bytes(b"abcdefghij0123456789"));
     assert_eq!(msg.arguments.as_ref().unwrap().target.unwrap(), U160::from_be_bytes(b"mnopqrstuvwxyz123456"));
@@ -21,7 +21,7 @@ pub fn response() {
         .unwrap();
     println!("{:?}", msg);
     assert_eq!(msg.message_type, Y_RESPONSE);
-    assert_eq!(msg.transaction_id, "aa");
+    assert_eq!(msg.transaction_id, b"aa".to_vec());
     assert_eq!(msg.response.as_ref().unwrap().id, U160::from_be_bytes(b"0123456789abcdefghij"));
 }
 
@@ -53,7 +53,7 @@ pub fn error() {
 
     let mut test_msg: KMessage = Default::default();
     test_msg.message_type = Y_ERROR.to_string();
-    test_msg.transaction_id = "aa".to_string();
+    test_msg.transaction_id = b"aa".to_vec();
     test_msg.error = Some(error::Error(201, "A Generic Error Ocurred".to_string()));
 
     //"d1:eli201e23:A Generic Error Ocurrede1:t2:aa1:y1:ee"
@@ -64,7 +64,7 @@ pub fn error() {
     println!("{:?}", err_message);
     assert_eq!(err_message, test_msg);
     assert_eq!(err_message.message_type, Y_ERROR);
-    assert_eq!(err_message.transaction_id, "aa");
+    assert_eq!(err_message.transaction_id, b"aa".to_vec());
 }
 
 #[test]
@@ -113,6 +113,35 @@ pub fn ping_response_plus_data() {
 pub fn error_response() {
     let buf =
         base64::decode("ZDE6ZWxpMjAzZTMwOlRyYW5zYWN0aW9uIElEIGxlbmd0aCB0b28gbG9uZ2UxOnY0Omx0DYAxOnkxOmVl").unwrap();
+    println!("MESSAGE: {}", utils::safe_string_from_slice(&buf));
+    let msg = bt_bencode::from_slice::<KMessage>(&buf).unwrap();
+    println!("{:?}", msg);
+
+    println!(
+        "{:#?}",
+        crate::messenger::message::Message::from_kmsg(SocketAddr::from_str("0.0.0.0:1234").unwrap(), msg)
+    );
+}
+
+#[test]
+pub fn query() {
+    let buf =
+        base64::decode("ZDE6YWQyOmlkMjA6oGCokH64btALaJnYkDs1B0Sgw0A2OnRhcmdldDIwOqBgrrQAAGxyAAAYaAAAX5QAAG1kZTE6cTk6ZmluZF9ub2RlMTp0NDoBPwAAMTp2NDpVVLTgMTp5MTpxZQ==").unwrap();
+    println!("MESSAGE: {}", utils::safe_string_from_slice(&buf));
+    let msg = bt_bencode::from_slice::<KMessage>(&buf).unwrap();
+    println!("{:?}", msg);
+
+    println!(
+        "{:#?}",
+        crate::messenger::message::Message::from_kmsg(SocketAddr::from_str("0.0.0.0:1234").unwrap(), msg)
+    );
+}
+
+#[test]
+pub fn query2() {
+    let buf =
+        base64::decode("ZDE6YWQyOmlkMjA6oGCuq2l6uuzW00L4vlO3t9SZG3JlMTpxNDpwaW5nMTp0MjrhrzE6djQ6TFQCBjE6eTE6cWU=")
+            .unwrap();
     println!("MESSAGE: {}", utils::safe_string_from_slice(&buf));
     let msg = bt_bencode::from_slice::<KMessage>(&buf).unwrap();
     println!("{:?}", msg);

@@ -16,7 +16,7 @@ pub struct Service {
 }
 
 pub struct OutstandingQuery {
-    transaction_id:   String,
+    transaction_id:   Vec<u8>,
     destination_addr: SocketAddr,
     return_value:     oneshot::Sender<QueryResult>,
 }
@@ -54,9 +54,9 @@ impl Service {
 
     async fn handle_received(self, packet: usize, message: Message) {
         debug!(" {} : Received: {:?}", packet, message);
-        info!(" {} : Received {} [{}] from {}", packet, message, message.transaction_id, message.origin.addr);
+        info!(" {} : Received {} [{:?}] from {}", packet, message, message.transaction_id, message.origin.addr);
 
-        let id = message.transaction_id.to_owned();
+        let id = message.transaction_id.clone();
         match message {
             Message::Query(q) =>
                 if let Some(handler) = &self.state.queries_inbound {
@@ -69,12 +69,12 @@ impl Service {
         }
     }
 
-    async fn return_result(&self, id: &str, result: QueryResult) {
+    async fn return_result(&self, id: &Vec<u8>, result: QueryResult) {
         if let Some(waiting) = self.remove_from_queue(id, result.base().origin.addr).await {
-            trace!("Returning value for [{}]", id);
+            trace!("Returning value for [{:?}]", id);
             waiting.return_value.send(result).ok();
         } else {
-            warn!("No one waiting for response [{}]", id);
+            warn!("No one waiting for response [{:?}]", id);
         }
     }
 
@@ -92,7 +92,7 @@ impl Service {
                 return_value:     return_tx,
             });
         }
-        trace!("Query [{}] added to outstanding", query.transaction_id);
+        trace!("Query [{:?}] added to outstanding", query.transaction_id);
         let message = query.clone().to_message();
         self.send_message(&message).await.map_err(|e| message.base().clone().to_error_generic(&e.to_string()))?;
 
@@ -103,18 +103,18 @@ impl Service {
                 |e|Result::Err(message.base().clone().to_error_generic(&e.to_string())),|r|r) }
             _ = sleep => {
                 self.remove_from_queue(&message.transaction_id, message.origin.addr).await;
-                warn!("Query [{}] timed out", message.transaction_id);
+                warn!("Query [{:?}] timed out", message.transaction_id);
                 Result::Err(message.base().clone().to_error_generic("Timeout"))
             }
         }
     }
 
-    async fn remove_from_queue(&self, id: &str, queried_addr: SocketAddr) -> Option<OutstandingQuery> {
-        trace!("Removing [{}] from queue", id);
+    async fn remove_from_queue(&self, id: &Vec<u8>, queried_addr: SocketAddr) -> Option<OutstandingQuery> {
+        trace!("Removing [{:?}] from queue", id);
         let mut queue = self.state.queries_outbound.lock().await;
         queue
             .iter()
-            .position(|q| q.transaction_id == id)
+            .position(|q| &q.transaction_id == id)
             .map(|i| queue.remove(i))
             .or_else(|| queue.iter().position(|q| q.destination_addr == queried_addr).map(|i| queue.remove(i)))
     }
@@ -126,7 +126,7 @@ impl Service {
 
         let packet = self.state.packet_num.fetch_add(1, Ordering::Relaxed);
         info!(
-            " {} : Sending {} [{}] to {}",
+            " {} : Sending {} [{:?}] to {}",
             packet,
             message,
             message.transaction_id,

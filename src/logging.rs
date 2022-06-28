@@ -79,6 +79,7 @@ pub fn init_logging() {
                             .to_string()
                     )))
             )
+            .level_for("router::bucket", log::LevelFilter::Off)
             .apply()
     );
 }
