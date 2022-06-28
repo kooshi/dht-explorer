@@ -1,9 +1,8 @@
-use crate::{messenger::{self, message::{MessageBase, Query, QueryResult, ResponseKind}, Messenger, QueryHandler, WrappedQueryHandler}, node_info::NodeInfo, router::Router, u160::U160};
+use crate::{messenger::{self, message::{Error, KnownError, MessageBase, Query, QueryResult, ResponseKind}, Messenger, QueryHandler, WrappedQueryHandler}, node_info::NodeInfo, router::Router, u160::U160};
 use async_trait::async_trait;
 use futures::future::join_all;
 use log::error;
 use messenger::message::QueryMethod;
-use rand::{seq::SliceRandom, thread_rng};
 use simple_error::{try_with, SimpleResult};
 use std::{net::SocketAddr, str::FromStr, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
 
@@ -104,11 +103,13 @@ impl QueryHandler for NodeState {
             .build();
         match query.method {
             QueryMethod::Ping => Ok(response_base.to_response(ResponseKind::Ok)),
-            QueryMethod::FindNode(_) => todo!(),
-            QueryMethod::GetPeers(_) => todo!(),
-            QueryMethod::AnnouncePeer(_) => todo!(),
-            QueryMethod::Put(_) => todo!(),
-            QueryMethod::Get => todo!(),
+            QueryMethod::FindNode(n) =>
+                Ok(response_base.to_response(ResponseKind::KNearest(self.router.lookup(n).await))),
+            QueryMethod::GetPeers(n) =>
+                Ok(response_base.to_response(ResponseKind::KNearest(self.router.lookup(n).await))),
+            QueryMethod::AnnouncePeer(_) => Err(response_base.to_error(KnownError::Server)),
+            QueryMethod::Put(_) => Err(response_base.to_error(KnownError::MethodUnknown)),
+            QueryMethod::Get => Err(response_base.to_error(KnownError::MethodUnknown)),
         }
     }
 }

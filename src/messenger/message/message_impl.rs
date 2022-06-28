@@ -1,6 +1,5 @@
 use super::{kmsg::{socket_addr_wrapper::SocketAddrWrapper, *}, *};
-use crate::node::Node;
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::Serialize;
 use simple_error::{bail, map_err_with, simple_error, try_with, SimpleResult};
 use std::fmt::Display;
 
@@ -39,16 +38,16 @@ impl Deref for Message {
         self.base()
     }
 }
-
-impl Message {
-    pub fn base(&self) -> &MessageBase {
+impl IMessageBase for Message {
+    fn base(&self) -> &MessageBase {
         match self {
             Message::Query(Query { base, .. }) => base,
             Message::Response(Response { base, .. }) => base,
             Message::Error(Error { base, .. }) => base,
         }
     }
-
+}
+impl Message {
     fn base_mut(&mut self) -> &mut MessageBase {
         match self {
             Message::Query(Query { base, .. }) => base,

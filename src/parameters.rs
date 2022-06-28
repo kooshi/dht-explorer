@@ -5,10 +5,11 @@ use structopt::StructOpt;
 #[structopt(name = "DHT", about = "do dht stuff")]
 pub struct Parameters {
     #[structopt(short, long, default_value = "0.0.0.0:6881", about = "UDP ad.dr.es.ss:port")]
-    pub bind_v4: String,
-
+    pub bind_v4:   String,
     #[structopt(short = "6", long, about = "UDP [addr::esss]:port")]
-    pub bind_v6: Option<String>,
+    pub bind_v6:   Option<String>,
+    #[structopt(long)]
+    pub public_ip: Option<String>,
 
     #[structopt(short, long, parse(from_os_str), about = "node save state file")]
     pub state: Option<PathBuf>,

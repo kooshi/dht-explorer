@@ -1,8 +1,8 @@
-use crate::{node_info::NodeInfo, u160::U160};
+use crate::{node_info::NodeInfo, param, u160::U160};
 use bucket::Bucket;
 use log::{debug, info};
 use simple_error::SimpleResult;
-use std::{collections::VecDeque, path::PathBuf};
+use std::{collections::VecDeque, net::IpAddr, path::PathBuf, str::FromStr};
 use tokio::sync::RwLock;
 mod bucket;
 
@@ -25,8 +25,12 @@ impl Router {
     }
 
     fn generate_own_id() -> U160 {
-        //update later to secure version
-        U160::rand()
+        param!()
+            .public_ip
+            .as_ref()
+            .map_or(None, |ip| IpAddr::from_str(&ip).ok())
+            .map(|ip| U160::from_ip(&ip))
+            .unwrap_or(U160::rand())
     }
 
     pub async fn add(&self, node: NodeInfo) {

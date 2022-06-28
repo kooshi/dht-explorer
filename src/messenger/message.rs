@@ -36,6 +36,7 @@ pub struct Error {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum KnownError {
     Generic            = 201,
+    Server             = 202,
     Protocol           = 203,
     MethodUnknown      = 204,
     InvalidV           = 205,
@@ -51,6 +52,7 @@ impl KnownError {
     pub fn description(&self) -> &str {
         match self {
             KnownError::Generic => "A Generic Error Occurred",
+            KnownError::Server => "The Server Encountered an Error",
             KnownError::Protocol => "Protocol Error, such as a malformed packet, invalid arguments, or bad token",
             KnownError::MethodUnknown => "Method Unknown",
             KnownError::InvalidV => "V missing or too long (>999).",
@@ -64,13 +66,12 @@ impl KnownError {
     }
 }
 
+impl std::error::Error for Error {}
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, r#"({}) "{}""#, self.code, self.description)
     }
 }
-
-impl std::error::Error for Error {}
 
 impl Query {
     pub fn to_message(self) -> Message {
@@ -90,6 +91,17 @@ impl Response {
 impl Error {
     pub fn to_message(self) -> Message {
         Message::Error(self)
+    }
+}
+pub trait IMessageBase {
+    fn base(&self) -> &MessageBase;
+}
+impl IMessageBase for QueryResult {
+    fn base(&self) -> &MessageBase {
+        match self {
+            Ok(r) => &r.base,
+            Err(e) => &e.base,
+        }
     }
 }
 

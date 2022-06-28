@@ -12,13 +12,13 @@ mod utils;
 
 use crate::logging::init_logging;
 use fern::Dispatch;
-use log::error;
 use node::Node;
 use parameters::Parameters;
 use simple_error::require_with;
-use std::{net::{SocketAddr, ToSocketAddrs}, str::FromStr};
+use std::{error::Error, net::{IpAddr, SocketAddr, ToSocketAddrs}, str::FromStr};
 use structopt::StructOpt;
 use tokio::sync::OnceCell;
+use u160::U160;
 
 static PARAMS: OnceCell<Parameters> = OnceCell::const_new();
 #[macro_export]
@@ -51,12 +51,13 @@ fn init() {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     let peer = require_with!(param!().peer.to_socket_addrs()?.next(), "invalid peer address");
     let addr = SocketAddr::from_str(&param!().bind_v4)?;
 
-    let node = Node::new(addr, true).await?;
+    let node = Node::new(addr, false).await?;
     node.bootstrap(peer).await?;
 
+    tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
     Ok(())
 }

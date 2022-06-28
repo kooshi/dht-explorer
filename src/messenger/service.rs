@@ -1,4 +1,5 @@
 use super::*;
+use crate::messenger::message::IMessageBase;
 use simple_error::bail;
 use std::sync::atomic::Ordering;
 pub struct ServiceState {
@@ -15,8 +16,9 @@ pub struct Service {
 }
 
 pub struct OutstandingQuery {
-    transaction_id: String,
-    return_value:   oneshot::Sender<QueryResult>,
+    transaction_id:   String,
+    destination_addr: SocketAddr,
+    return_value:     oneshot::Sender<QueryResult>,
 }
 
 impl Service {
@@ -68,7 +70,7 @@ impl Service {
     }
 
     async fn return_result(&self, id: &str, result: QueryResult) {
-        if let Some(waiting) = self.remove_from_queue(id).await {
+        if let Some(waiting) = self.remove_from_queue(id, result.base().origin.addr).await {
             trace!("Returning value for [{}]", id);
             waiting.return_value.send(result).ok();
         } else {
@@ -84,7 +86,11 @@ impl Service {
         let (return_tx, return_rx) = oneshot::channel();
         {
             let mut queue = self.state.queries_outbound.lock().await;
-            queue.push(OutstandingQuery { transaction_id: query.transaction_id.clone(), return_value: return_tx });
+            queue.push(OutstandingQuery {
+                transaction_id:   query.transaction_id.clone(),
+                destination_addr: query.origin.addr,
+                return_value:     return_tx,
+            });
         }
         trace!("Query [{}] added to outstanding", query.transaction_id);
         let message = query.clone().to_message();
@@ -96,17 +102,21 @@ impl Service {
                 m.map_or_else(
                 |e|Result::Err(message.base().clone().to_error_generic(&e.to_string())),|r|r) }
             _ = sleep => {
-                self.remove_from_queue(&message.transaction_id).await;
+                self.remove_from_queue(&message.transaction_id, message.origin.addr).await;
                 warn!("Query [{}] timed out", message.transaction_id);
                 Result::Err(message.base().clone().to_error_generic("Timeout"))
             }
         }
     }
 
-    async fn remove_from_queue(&self, id: &str) -> Option<OutstandingQuery> {
+    async fn remove_from_queue(&self, id: &str, queried_addr: SocketAddr) -> Option<OutstandingQuery> {
         trace!("Removing [{}] from queue", id);
         let mut queue = self.state.queries_outbound.lock().await;
-        queue.iter().position(|q| q.transaction_id == id).map(|i| queue.remove(i))
+        queue
+            .iter()
+            .position(|q| q.transaction_id == id)
+            .map(|i| queue.remove(i))
+            .or_else(|| queue.iter().position(|q| q.destination_addr == queried_addr).map(|i| queue.remove(i)))
     }
 
     pub async fn send_message(&self, message: &Message) -> SimpleResult<()> {
