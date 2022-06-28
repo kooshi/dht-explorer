@@ -108,7 +108,7 @@ impl IMessageBase for QueryResult {
 #[derive(TypedBuilder, Debug, Clone, PartialEq, Eq)]
 pub struct MessageBase {
     pub origin:           NodeInfo,
-    pub transaction_id:   Vec<u8>,
+    pub transaction_id:   u16,
     #[builder(setter(strip_option))]
     pub destination_addr: Option<SocketAddr>,
     #[builder(default)]

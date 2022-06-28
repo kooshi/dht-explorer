@@ -18,13 +18,13 @@ async fn ping() {
     let querybase = MessageBase {
         destination_addr: Some(server_node.addr),
         read_only:        true,
-        transaction_id:   b"testing".to_vec(),
+        transaction_id:   123,
         origin:           client_node,
     };
     let response = client.query(&querybase.into_query(QueryMethod::Ping)).await;
     assert!(response.is_ok());
     let response = response.unwrap();
-    assert!(response.read_only);
+    assert!(!response.read_only);
     assert_eq!(response.kind, ResponseKind::Ok);
     assert_eq!(response.origin.id, server_id);
     assert_eq!(response.origin.addr, server_node.addr);
@@ -62,7 +62,7 @@ async fn timeout_readonly() {
     let querybase = MessageBase {
         destination_addr: Some(server_node.addr),
         read_only:        true,
-        transaction_id:   b"testing".to_vec(),
+        transaction_id:   321,
         origin:           client_node,
     };
     let response = client.query(&querybase.into_query(QueryMethod::Ping)).await;

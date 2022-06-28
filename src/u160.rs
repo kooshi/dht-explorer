@@ -21,8 +21,9 @@ impl U160 {
             IpAddr::V4(ip) => crc32c(&((ip.to_u32() & 0x030f3fff_u32) | ((r as u32) << 29)).to_be_bytes()),
             IpAddr::V6(ip) => crc32c(&((ip.ms_u64() & 0x0103070f_1f3f7fff_u64) | ((r as u64) << 61)).to_be_bytes()),
         };
-        let msbytes = (rand::random::<u128>() | 0xfffff800_00000000_00000000_00000000_u128) & ((pfx as u128) << 96);
-        let lsbytes = (rand::random::<u32>() | 0x00000007_u32) & (r as u32);
+        let msbytes = (rand::random::<u128>() & 0x000007ff_ffffffff_ffffffff_ffffffff_u128)
+            | (((pfx & 0xfffff800_u32) as u128) << 96);
+        let lsbytes = (rand::random::<u32>() & 0xfffffff8_u32) | ((r & 0x07_u8) as u32);
         Self::new(msbytes, lsbytes)
     }
 
@@ -269,6 +270,16 @@ mod tests {
 
     #[test]
     fn bep42() {
+        let addr = IpAddr::from_str("2001:db8:85a3:0:0:8a2e:370:7334").unwrap();
+        let test = U160::from_ip(&addr);
+        println!("{}", test);
+        assert!(test.validate(&addr));
+
+        let addr = IpAddr::from_str("124.31.75.21").unwrap();
+        let test = U160::from_ip(&addr);
+        println!("{}", test);
+        assert!(test.validate(&addr));
+
         assert!(
             U160::from_hex("5fbfbff10c5d6a4ec8a88e4c6ab4c28b95eee401")
                 .validate(&IpAddr::from_str("124.31.75.21").unwrap())

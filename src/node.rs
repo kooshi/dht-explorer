@@ -72,7 +72,7 @@ impl Node {
                 id:   self.state.router.own_id(),
                 addr: SocketAddr::from_str("127.0.0.1:1337").unwrap(),
             }) //TODO fix addr later, doesn't really matter
-            .transaction_id((self.state.transaction.fetch_add(1, Ordering::Relaxed) as u32).to_be_bytes().to_vec())
+            .transaction_id(self.state.transaction.fetch_add(1, Ordering::Relaxed) as u16)
             .destination_addr(to)
             .read_only(self.state.read_only)
             .build()

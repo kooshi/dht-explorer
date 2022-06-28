@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![feature(async_closure)]
 #![feature(slice_as_chunks)]
+#![feature(iter_next_chunk)]
 mod logging;
 mod messenger;
 mod node;
@@ -39,18 +40,18 @@ macro_rules! init_fail {
     };
 }
 #[ctor::ctor]
-fn init() {
-    println!("Initialising...");
-    #[cfg(not(test))]
-    let p = Parameters::from_args();
-    #[cfg(test)]
-    let p = Parameters::from_iter(vec!["--log-level", "Off"]);
-    init_fail!(PARAMS.set(p));
-    init_logging();
-}
+fn init() {}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    println!("Initialising...");
+    #[cfg(not(test))]
+    let p = init_fail!(Parameters::from_args_safe());
+    #[cfg(test)]
+    let p = init_fail!(Parameters::from_iter_safe(vec!["--log-level", "Off"]));
+    init_fail!(PARAMS.set(p));
+    init_logging();
+
     let peer = require_with!(param!().peer.to_socket_addrs()?.next(), "invalid peer address");
     let addr = SocketAddr::from_str(&param!().bind_v4)?;
 

@@ -67,7 +67,7 @@ impl Message {
 
     pub fn to_kmsg(&self) -> KMessage {
         let builder = KMessage::builder()
-            .transaction_id(self.transaction_id.clone())
+            .transaction_id(self.transaction_id.to_be_bytes().to_vec())
             .peer_ip(socket_addr_wrapper::SocketAddrWrapper { socket_addr: self.destination_addr })
             .read_only(self.read_only);
         match &self {
@@ -118,7 +118,7 @@ impl Message {
     pub fn from_kmsg(origin_addr: SocketAddr, kmsg: KMessage) -> SimpleResult<Self> {
         let mut base = MessageBase {
             origin:           NodeInfo { id: U160::empty(), addr: origin_addr },
-            transaction_id:   kmsg.transaction_id,
+            transaction_id:   kmsg.transaction_id.as_chunks().0.iter().next().map_or(0, |c| u16::from_be_bytes(*c)),
             destination_addr: if let Some(wrap) = kmsg.peer_ip { wrap.socket_addr } else { None },
             read_only:        if let Some(ro) = kmsg.read_only { ro } else { false },
         };
@@ -225,7 +225,7 @@ mod test {
         let addr = SocketAddr::from_str("127.0.0.1:1337").unwrap();
         let msg = MessageBase::builder()
             .origin(NodeInfo { id: U160::rand(), addr })
-            .transaction_id(b"test".to_vec())
+            .transaction_id(654)
             .destination_addr(addr)
             .read_only(true)
             .build()

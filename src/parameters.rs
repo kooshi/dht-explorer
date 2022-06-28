@@ -30,7 +30,7 @@ pub struct Parameters {
 
     #[structopt(long)]
     pub log_no_color:   bool,
-    #[structopt(default_value = "Debug")]
+    #[structopt(long, default_value = "Debug")]
     pub log_level:      log::LevelFilter,
     #[structopt(long)]
     pub log_std_level:  Option<log::LevelFilter>,
