@@ -1,8 +1,8 @@
 use crate::u160::U160;
 use serde::{Deserialize, Deserializer, Serialize};
-use std::{fmt::{Debug, Display}, net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}};
+use std::{fmt::{Debug, Display}, hash::Hash, net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}};
 pub const IPV4_DHT_NODE_BYTES_LEN: usize = 26;
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct NodeInfo {
     pub id:   U160,
     pub addr: SocketAddr,

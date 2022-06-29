@@ -1,9 +1,9 @@
 use crate::{messenger::{self, message::{KnownError, MessageBase, Query, QueryResult, ResponseKind}, Messenger, QueryHandler, WrappedQueryHandler}, node_info::NodeInfo, router::Router, u160::U160};
 use async_trait::async_trait;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use messenger::message::QueryMethod;
 use simple_error::{try_with, SimpleResult};
-use std::{collections::BTreeSet, net::{IpAddr, SocketAddr}, str::FromStr, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
+use std::{collections::{BTreeSet, HashSet}, net::{IpAddr, SocketAddr}, str::FromStr, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
 use tokio::sync::mpsc::{self, UnboundedSender};
 
 #[derive(Clone)]
@@ -36,53 +36,70 @@ impl Node {
     pub async fn find_node(&self, target: U160) -> Found {
         let (tx, mut rx) = mpsc::unbounded_channel();
         for known in self.state.router.lookup(target).await {
-            tx.send(FoundOne(known, tx.clone())).unwrap_or_else(|_| error!("init find node"));
+            tx.send(OneResult::FoundOne(known, tx.clone())).unwrap_or_else(|_| error!("init find node"));
         }
         drop(tx);
         #[derive(PartialEq, Eq)]
-        struct Close<'a>(&'a U160, NodeInfo);
-        impl PartialOrd for Close<'_> {
+        struct Close(U160, NodeInfo);
+        impl PartialOrd for Close {
             fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-                self.0.distance(self.1.id).partial_cmp(&other.0.distance(other.1.id))
+                self.0.partial_cmp(&other.0)
             }
         }
-        impl Ord for Close<'_> {
+        impl Ord for Close {
             fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-                self.0.distance(self.1.id).cmp(&other.0.distance(other.1.id))
+                self.0.cmp(&other.0)
             }
         }
+        let mut ignore = HashSet::new();
         let mut seen = BTreeSet::new();
-        while let Some(FoundOne(found, tx)) = rx.recv().await {
-            if found.id == target {
-                return Found::Target(found);
-            }
-            if seen.insert(Close(&target, found))
-                && seen.iter().position(|c| c.1.id == found.id).unwrap() < (crate::K_SIZE as usize/* * 2*/)
-            {
-                let selfclone = self.clone();
-                let txclone = tx.clone();
-                tokio::spawn(async move {
-                    selfclone.send_find_node(found, target, txclone).await;
-                });
+        while let Some(one_result) = rx.recv().await {
+            match one_result {
+                OneResult::FoundOne(found, tx) => {
+                    if found.id == target {
+                        return Found::Target(found);
+                    }
+                    if seen.insert(Close(target.distance(found.id), found))
+                        && seen.iter().position(|c| c.1.id == found.id).unwrap() < (crate::K_SIZE as usize * 2)
+                    {
+                        let selfclone = self.clone();
+                        let txclone = tx.clone();
+                        tokio::spawn(async move {
+                            selfclone.send_find_node(found, target, txclone).await;
+                        });
+                    }
+                }
+                OneResult::RemoveOne(n) => {
+                    debug!("Ignoring node that didn't respond {n}");
+                    ignore.insert(n);
+                }
             }
         }
-        Found::KClosest(seen.iter().take(crate::K_SIZE as usize).map(|f| f.1).collect())
+        Found::KClosest(
+            seen.iter()
+                .filter_map(|n| if ignore.contains(&n.1) { None } else { Some(n.1) })
+                .take(crate::K_SIZE as usize)
+                .collect(),
+        )
     }
 
-    async fn send_find_node(&self, to: NodeInfo, id: U160, found: UnboundedSender<FoundOne>) {
+    async fn send_find_node(&self, to: NodeInfo, id: U160, found: UnboundedSender<OneResult>) {
         match self.messenger.query(&self.message_base(to.addr).into_query(QueryMethod::FindNode(id))).await {
             Ok(r) => {
                 self.state.router.add(r.origin).await;
                 if let ResponseKind::KNearest(nodes) = r.kind {
                     for n in nodes {
                         self.state.router.add(n).await;
-                        found.send(FoundOne(n, found.clone())).unwrap_or_else(|_| warn!("return find node"));
+                        found.send(OneResult::FoundOne(n, found.clone())).unwrap_or_else(|_| warn!("return find node"));
                     }
+                } else {
+                    warn!("unexpected find node response")
                 }
             }
             Err(e) => {
                 error!("Received error response: {}", e);
                 self.state.router.ban_id(to.id).await;
+                found.send(OneResult::RemoveOne(to)).unwrap_or_else(|_| warn!("return find node"));
             }
         }
     }
@@ -103,7 +120,10 @@ impl Node {
         self.state.router.own_id()
     }
 }
-struct FoundOne(NodeInfo, UnboundedSender<FoundOne>);
+pub enum OneResult {
+    FoundOne(NodeInfo, UnboundedSender<OneResult>),
+    RemoveOne(NodeInfo),
+}
 #[derive(Debug)]
 pub enum Found {
     Target(NodeInfo),

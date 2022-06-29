@@ -2,7 +2,7 @@ extern crate hex;
 use crate::utils::{Ipv4AddrExt, Ipv6AddrExt};
 use crc32c::crc32c;
 use std::{fmt, net::IpAddr, ops::*};
-#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct U160 {
     msbytes: u128,
     lsbytes: u32,
