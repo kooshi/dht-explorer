@@ -6,7 +6,7 @@ mod messenger;
 pub mod node;
 mod node_info;
 mod router;
-mod u160;
+pub mod u160;
 mod utils;
 
 const MAX_CONCURRENCY: u8 = 8;

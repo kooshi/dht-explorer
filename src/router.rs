@@ -1,8 +1,8 @@
-use crate::{node_info::NodeInfo, param, u160::U160};
+use crate::{node_info::NodeInfo, u160::U160};
 use bucket::Bucket;
 use log::{debug, info};
 use simple_error::SimpleResult;
-use std::{collections::VecDeque, net::IpAddr, path::PathBuf, str::FromStr};
+use std::{collections::VecDeque, net::IpAddr, path::PathBuf};
 use tokio::sync::RwLock;
 mod bucket;
 
@@ -13,24 +13,15 @@ pub struct Router {
 const BAN_COUNT: usize = 100;
 const K_SIZE: u8 = 10;
 impl Router {
-    pub async fn new(bucket_file: PathBuf) -> SimpleResult<Self> {
+    pub async fn new(bucket_file: PathBuf, public_ip: IpAddr) -> SimpleResult<Self> {
         let buckets = Bucket::load_from_file(bucket_file)
             .await
-            .unwrap_or_else(|_| Bucket::root(Router::generate_own_id(), K_SIZE));
+            .unwrap_or_else(|_| Bucket::root(U160::from_ip(&public_ip), K_SIZE));
         Ok(Self { buckets, banned_ids: RwLock::new(VecDeque::with_capacity(BAN_COUNT)) })
     }
 
     pub fn own_id(&self) -> U160 {
         self.buckets.id()
-    }
-
-    fn generate_own_id() -> U160 {
-        param!()
-            .public_ip
-            .as_ref()
-            .and_then(|ip| IpAddr::from_str(ip).ok())
-            .map(|ip| U160::from_ip(&ip))
-            .unwrap_or_else(U160::rand)
     }
 
     pub async fn add(&self, node: NodeInfo) {
@@ -55,5 +46,9 @@ impl Router {
         if !self.buckets.remove(id).await {
             info!("Failed to remove {}", id)
         }
+    }
+
+    pub async fn stats(&self) -> String {
+        self.buckets.stats().await
     }
 }

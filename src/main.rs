@@ -1,10 +1,11 @@
 mod parameters;
 
-use dht_explorer::node::Node;
+use dht_explorer::{node::Node, u160::U160};
 use fern::Dispatch;
+use log::info;
 use parameters::Parameters;
-use simple_error::{map_err_with, require_with, SimpleResult};
-use std::{error::Error, net::{SocketAddr, ToSocketAddrs}, str::FromStr};
+use simple_error::{map_err_with, require_with, try_with, SimpleResult};
+use std::{error::Error, net::{IpAddr, SocketAddr, ToSocketAddrs}, str::FromStr};
 use structopt::StructOpt;
 use tokio::sync::OnceCell;
 
@@ -36,11 +37,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let peer = require_with!(param!().peer.to_socket_addrs()?.next(), "invalid peer address");
     let addr = SocketAddr::from_str(&param!().bind_v4)?;
-
-    let node = Node::new(addr, true).await?;
+    let public_ip = try_with!(IpAddr::from_str(param!().public_ip.as_ref().unwrap()), "invalid public ip");
+    let node = Node::new(addr, true, public_ip).await?;
     node.bootstrap(peer).await?;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
+    //let found = node.find_node(U160::rand()).await;
+    //info!("Found! {found:?}");
     Ok(())
 }
 
