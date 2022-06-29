@@ -2,12 +2,14 @@ use super::*;
 use crate::messenger::message::IMessageBase;
 use simple_error::bail;
 use std::sync::atomic::Ordering;
+use tokio::sync::Semaphore;
 pub struct ServiceState {
     pub socket:           UdpSocket,
     pub queries_outbound: Mutex<Vec<OutstandingQuery>>,
     pub timeout_ms:       u16,
     pub queries_inbound:  Option<WrappedQueryHandler>,
     pub packet_num:       AtomicUsize,
+    pub max_q:            Semaphore,
 }
 
 #[derive(Clone)]
@@ -79,6 +81,7 @@ impl Service {
     }
 
     pub async fn query(&self, query: &Query) -> QueryResult {
+        let _permit = self.state.max_q.acquire().await;
         if cfg!(debug_assertions) && !cfg!(test) {
             time::sleep(Duration::from_millis(1000)).await;
         }

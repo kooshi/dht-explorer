@@ -5,7 +5,7 @@ use futures::future::{FutureExt, RemoteHandle};
 use log::*;
 use simple_error::{map_err_with, require_with, try_with, SimpleResult};
 use std::{net::SocketAddr, ops::DerefMut, sync::{atomic::AtomicUsize, Arc}};
-use tokio::{net::UdpSocket, sync::{oneshot, Mutex}, time, time::Duration};
+use tokio::{net::UdpSocket, sync::{oneshot, Mutex, Semaphore}, time, time::Duration};
 pub(crate) mod message;
 #[cfg(test)]
 mod messenger_tests;
@@ -19,7 +19,7 @@ pub struct Messenger {
 
 impl Messenger {
     pub async fn new(
-        bind_addr: SocketAddr, timeout_ms: u16, query_handler: Option<WrappedQueryHandler>,
+        bind_addr: SocketAddr, timeout_ms: u16, query_handler: Option<WrappedQueryHandler>, max_q: u8,
     ) -> SimpleResult<Self> {
         let socket = map_err_with!(UdpSocket::bind(bind_addr).await, "error binding host address")?;
         let queries_outbound = Mutex::new(Vec::with_capacity(20));
@@ -29,6 +29,7 @@ impl Messenger {
             timeout_ms,
             queries_inbound: query_handler,
             packet_num: AtomicUsize::new(0),
+            max_q: Semaphore::new(max_q.into()),
         });
         let service = Service { state };
         let (job, _recv_handle) = service.clone().recv().remote_handle();

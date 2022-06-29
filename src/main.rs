@@ -1,21 +1,9 @@
-#![allow(dead_code)]
-#![feature(async_closure)]
-#![feature(slice_as_chunks)]
-#![feature(iter_next_chunk)]
-mod logging;
-mod messenger;
-mod node;
-pub(crate) mod node_info;
 mod parameters;
-mod router;
-mod u160;
-mod utils;
 
-use crate::logging::init_logging;
+use dht_explorer::node::Node;
 use fern::Dispatch;
-use node::Node;
 use parameters::Parameters;
-use simple_error::require_with;
+use simple_error::{map_err_with, require_with, SimpleResult};
 use std::{error::Error, net::{SocketAddr, ToSocketAddrs}, str::FromStr};
 use structopt::StructOpt;
 use tokio::sync::OnceCell;
@@ -33,31 +21,83 @@ macro_rules! init_fail {
         match $fallible {
             Err(e) => {
                 eprintln!("\x1b[31mERROR: Init failed with: {}\x1B[0m", e);
-                panic!("init failed");
+                panic!("init");
             }
             Ok(v) => v,
         }
     };
 }
-#[ctor::ctor]
-fn init() {}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    println!("Initialising...");
-    #[cfg(not(test))]
     let p = init_fail!(Parameters::from_args_safe());
-    #[cfg(test)]
-    let p = init_fail!(Parameters::from_iter_safe(vec!["--log-level", "Off"]));
     init_fail!(PARAMS.set(p));
-    init_logging();
+    init_logging()?;
 
     let peer = require_with!(param!().peer.to_socket_addrs()?.next(), "invalid peer address");
     let addr = SocketAddr::from_str(&param!().bind_v4)?;
 
-    let node = Node::new(addr, false).await?;
+    let node = Node::new(addr, true).await?;
     node.bootstrap(peer).await?;
 
     tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
     Ok(())
+}
+
+fn init_logging() -> SimpleResult<()> {
+    let test_str = if cfg!(test) { "Test-" } else { "" };
+    let fmt = Box::new(|color: bool| {
+        // //Ironbow
+        // let colors = |l: log::Level| match l {
+        //     log::Level::Error => "230",
+        //     log::Level::Warn => "221",
+        //     log::Level::Info => "166",
+        //     log::Level::Debug => "124",
+        //     log::Level::Trace => "53",
+        // };
+
+        //Flame
+        let colors = |l: log::Level| match l {
+            log::Level::Error => "9",
+            log::Level::Warn => "220",
+            log::Level::Info => "228",
+            log::Level::Debug => "230",
+            log::Level::Trace => "248",
+        };
+        move |out: fern::FormatCallback, message: &std::fmt::Arguments, record: &log::Record| {
+            let (ansi_pfx, ansi_sfx) = if color {
+                (format!("\x1b[38;5;{}m", (colors)(record.level())), "\x1B[0m".to_owned())
+            } else {
+                ("".to_owned(), "".to_owned())
+            };
+            out.finish(format_args!(
+                "{}{}[{}][{}][{}] {}{}",
+                ansi_pfx,
+                test_str,
+                chrono::Local::now().format("%Y-%m-%d %T:%3f"),
+                record.target(),
+                record.level(),
+                message,
+                ansi_sfx
+            ))
+        }
+    });
+
+    let res = Dispatch::new()
+        .chain(
+            Dispatch::new()
+                .format((fmt)(!param!().log_no_color))
+                .level(param!().log_std_level.unwrap_or(param!().log_level))
+                .chain(std::io::stdout()),
+        )
+        .chain(Dispatch::new().format((fmt)(false)).level(param!().log_file_level.unwrap_or(param!().log_level)).chain(
+            init_fail!(fern::log_file(
+                        chrono::Local::now()
+                            .format(&(param!().log_dir.to_string() + test_str + &param!().log_file))
+                            .to_string()
+                    )),
+        ))
+        .level_for("router::bucket", log::LevelFilter::Off)
+        .apply();
+    map_err_with!(res, "failed to initialize logging")
 }

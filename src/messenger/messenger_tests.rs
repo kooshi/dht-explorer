@@ -7,13 +7,13 @@ async fn ping() {
     let client_addr = "127.0.0.1:54321";
     let client_id = U160::rand();
     let client_node = node_info::NodeInfo { id: client_id, addr: SocketAddr::from_str(client_addr).unwrap() };
-    let client = Messenger::new(client_node.addr, 100, None).await.unwrap();
+    let client = Messenger::new(client_node.addr, 100, None, 1).await.unwrap();
 
     let server_addr = "127.0.0.1:12345";
     let server_id = U160::rand();
     let server_node = node_info::NodeInfo { id: server_id, addr: SocketAddr::from_str(server_addr).unwrap() };
     let handler = Arc::new(TestHandler { info: server_node });
-    let _server = Messenger::new(server_node.addr, 100, Some(handler)).await.unwrap();
+    let _server = Messenger::new(server_node.addr, 100, Some(handler), 1).await.unwrap();
 
     let querybase = MessageBase {
         destination_addr: Some(server_node.addr),
@@ -40,7 +40,7 @@ impl QueryHandler for TestHandler {
         let returnbase = MessageBase {
             destination_addr: Some(query.origin.addr),
             read_only:        false,
-            transaction_id:   query.transaction_id.clone(),
+            transaction_id:   query.transaction_id,
             origin:           self.info,
         };
         Ok(returnbase.into_response(ResponseKind::Ok))
@@ -52,12 +52,12 @@ async fn timeout_readonly() {
     let client_addr = SocketAddr::from_str("127.0.0.1:34251").unwrap();
     let client_id = U160::rand();
     let client_node = node_info::NodeInfo { id: client_id, addr: client_addr };
-    let client = Messenger::new(client_node.addr, 100, None).await.unwrap();
+    let client = Messenger::new(client_node.addr, 100, None, 1).await.unwrap();
 
     let server_addr = "127.0.0.1:15243";
     let server_id = U160::rand();
     let server_node = node_info::NodeInfo { id: server_id, addr: SocketAddr::from_str(server_addr).unwrap() };
-    let _ro_server = Messenger::new(server_node.addr, 100, None).await.unwrap();
+    let _ro_server = Messenger::new(server_node.addr, 100, None, 1).await.unwrap();
 
     let querybase = MessageBase {
         destination_addr: Some(server_node.addr),
