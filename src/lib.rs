@@ -2,6 +2,7 @@
 #![feature(async_closure)]
 #![feature(slice_as_chunks)]
 #![feature(iter_next_chunk)]
+#![feature(negative_impls)]
 mod messenger;
 pub mod node;
 mod node_info;

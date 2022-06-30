@@ -12,15 +12,18 @@ mod messenger_tests;
 mod service;
 use service::*;
 
+pub struct ServiceHandle(RemoteHandle<()>);
+impl !Send for ServiceHandle {}
+impl !Sync for ServiceHandle {}
+
 pub struct Messenger {
-    service:      Service,
-    _recv_handle: RemoteHandle<()>,
+    service: Service,
 }
 
 impl Messenger {
     pub async fn new(
         bind_addr: SocketAddr, timeout_ms: u16, query_handler: Option<WrappedQueryHandler>, max_q: u8,
-    ) -> SimpleResult<Self> {
+    ) -> SimpleResult<(Self, ServiceHandle)> {
         let socket = map_err_with!(UdpSocket::bind(bind_addr).await, "error binding host address")?;
         let queries_outbound = Mutex::new(Vec::with_capacity(20));
         let state = Arc::new(ServiceState {
@@ -32,12 +35,12 @@ impl Messenger {
             max_q: Semaphore::new(max_q.into()),
         });
         let service = Service { state };
-        let (job, _recv_handle) = service.clone().recv().remote_handle();
+        let (job, recv_handle) = service.clone().recv().remote_handle();
 
-        let new = Messenger { _recv_handle, service };
+        let new = Messenger { service };
         tokio::spawn(job);
 
-        Ok(new)
+        Ok((new, ServiceHandle(recv_handle)))
     }
 
     pub async fn send_message(&self, message: &Message) -> SimpleResult<()> {

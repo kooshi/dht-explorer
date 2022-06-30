@@ -1,3 +1,4 @@
+use futures::{future::{select_all, RemoteHandle}, Future, FutureExt};
 use log::error;
 use regex::Regex;
 use simple_error::SimpleResult;
@@ -38,6 +39,34 @@ pub trait Ipv4AddrExt {
 impl Ipv4AddrExt for Ipv4Addr {
     fn to_u32(self) -> u32 {
         u32::from_be_bytes(self.octets())
+    }
+}
+
+pub struct UnboundedConcurrentTaskSet<T> {
+    handles: Vec<RemoteHandle<T>>,
+}
+
+impl<T> UnboundedConcurrentTaskSet<T>
+where T: Send + 'static
+{
+    pub fn new() -> Self {
+        UnboundedConcurrentTaskSet { handles: Vec::new() }
+    }
+
+    pub async fn get_next_result(&mut self) -> Option<T> {
+        if self.handles.is_empty() {
+            return None;
+        }
+        let (out, _i, remaining) = select_all(self.handles.drain(..)).await;
+        self.handles = remaining;
+        Some(out)
+    }
+
+    pub fn add_task<F>(&mut self, task: F)
+    where F: Future<Output = T> + Send + 'static {
+        let (job, handle) = task.remote_handle();
+        self.handles.push(handle);
+        tokio::spawn(job);
     }
 }
 

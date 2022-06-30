@@ -40,8 +40,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let public_ip = try_with!(IpAddr::from_str(param!().public_ip.as_ref().unwrap()), "invalid public ip");
     let node = Node::new(addr, true, public_ip).await?;
     node.bootstrap(peer).await?;
-    //let found = node.find_node(U160::rand()).await;
-    //info!("Found! {found:?}");
+    let found = node.find_node(U160::rand()).await;
+    info!("Found! {found:?}");
     Ok(())
 }
 

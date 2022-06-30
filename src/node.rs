@@ -1,13 +1,17 @@
-use crate::{messenger::{self, message::{KnownError, MessageBase, Query, QueryResult, ResponseKind}, Messenger, QueryHandler, WrappedQueryHandler}, node_info::NodeInfo, router::Router, u160::U160};
+use crate::{messenger::{self, message::{KnownError, MessageBase, Query, QueryResult, ResponseKind}, Messenger, QueryHandler, WrappedQueryHandler}, node_info::NodeInfo, router::Router, u160::U160, utils::UnboundedConcurrentTaskSet};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use messenger::message::QueryMethod;
 use simple_error::{try_with, SimpleResult};
 use std::{collections::{BTreeSet, HashSet}, net::{IpAddr, SocketAddr}, str::FromStr, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
-use tokio::sync::mpsc::{self, UnboundedSender};
+
+pub struct Node {
+    _messenger_handle: messenger::ServiceHandle,
+    service:           Service,
+}
 
 #[derive(Clone)]
-pub struct Node {
+struct Service {
     messenger: Arc<Messenger>,
     state:     Arc<NodeState>,
 }
@@ -17,10 +21,20 @@ impl Node {
         let router = Router::new("./target/buckets.ben".into(), public_ip).await?;
         let state = Arc::new(NodeState { router, transaction: AtomicUsize::new(0), read_only });
         let handler: Option<WrappedQueryHandler> = if read_only { None } else { Some(state.clone()) };
-        let messenger = Arc::new(Messenger::new(addr, 500, handler, crate::MAX_CONCURRENCY).await?);
-        Ok(Node { messenger, state })
+        let (messenger, _messenger_handle) = Messenger::new(addr, 500, handler, crate::MAX_CONCURRENCY).await?;
+        let service = Service { messenger: Arc::new(messenger), state };
+        Ok(Node { service, _messenger_handle })
     }
 
+    pub async fn bootstrap(&self, bootstrap_node: SocketAddr) -> SimpleResult<()> {
+        self.service.bootstrap(bootstrap_node).await
+    }
+
+    pub async fn find_node(&self, target: U160) -> Found {
+        self.service.find_node(target).await
+    }
+}
+impl Service {
     pub async fn bootstrap(&self, bootstrap_node: SocketAddr) -> SimpleResult<()> {
         let response = try_with!(
             self.messenger.query(&self.message_base(bootstrap_node).into_query(QueryMethod::Ping)).await,
@@ -34,11 +48,10 @@ impl Node {
     }
 
     pub async fn find_node(&self, target: U160) -> Found {
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        for known in self.state.router.lookup(target).await {
-            tx.send(OneResult::FoundOne(known, tx.clone())).unwrap_or_else(|_| error!("init find node"));
-        }
-        drop(tx);
+        let mut tasks = UnboundedConcurrentTaskSet::new();
+        let state = self.state.clone();
+        tasks.add_task(async move { OneResult::FoundSome(state.router.lookup(target).await) });
+
         #[derive(PartialEq, Eq)]
         struct Close(U160, NodeInfo);
         impl PartialOrd for Close {
@@ -53,22 +66,20 @@ impl Node {
         }
         let mut ignore = HashSet::new();
         let mut seen = BTreeSet::new();
-        while let Some(one_result) = rx.recv().await {
+        while let Some(one_result) = tasks.get_next_result().await {
             match one_result {
-                OneResult::FoundOne(found, tx) => {
-                    if found.id == target {
-                        return Found::Target(found);
-                    }
-                    if seen.insert(Close(target.distance(found.id), found))
-                        && seen.iter().position(|c| c.1.id == found.id).unwrap() < (crate::K_SIZE as usize * 2)
-                    {
-                        let selfclone = self.clone();
-                        let txclone = tx.clone();
-                        tokio::spawn(async move {
-                            selfclone.send_find_node(found, target, txclone).await;
-                        });
-                    }
-                }
+                OneResult::FoundSome(found) =>
+                    for found in found {
+                        if found.id == target {
+                            return Found::Target(found);
+                        }
+                        if seen.insert(Close(target.distance(found.id), found))
+                            && seen.iter().position(|c| c.1.id == found.id).unwrap() < (crate::K_SIZE as usize * 2)
+                        {
+                            let selfclone = self.clone();
+                            tasks.add_task(async move { selfclone.send_find_node(found, target).await })
+                        }
+                    },
                 OneResult::RemoveOne(n) => {
                     debug!("Ignoring node that didn't respond {n}");
                     ignore.insert(n);
@@ -83,23 +94,21 @@ impl Node {
         )
     }
 
-    async fn send_find_node(&self, to: NodeInfo, id: U160, found: UnboundedSender<OneResult>) {
+    async fn send_find_node(&self, to: NodeInfo, id: U160) -> OneResult {
         match self.messenger.query(&self.message_base(to.addr).into_query(QueryMethod::FindNode(id))).await {
             Ok(r) => {
                 self.state.router.add(r.origin).await;
                 if let ResponseKind::KNearest(nodes) = r.kind {
-                    for n in nodes {
-                        self.state.router.add(n).await;
-                        found.send(OneResult::FoundOne(n, found.clone())).unwrap_or_else(|_| warn!("return find node"));
-                    }
+                    OneResult::FoundSome(nodes)
                 } else {
-                    warn!("unexpected find node response")
+                    warn!("unexpected find node response");
+                    OneResult::RemoveOne(to)
                 }
             }
             Err(e) => {
                 error!("Received error response: {}", e);
                 self.state.router.ban_id(to.id).await;
-                found.send(OneResult::RemoveOne(to)).unwrap_or_else(|_| warn!("return find node"));
+                OneResult::RemoveOne(to)
             }
         }
     }
@@ -120,8 +129,9 @@ impl Node {
         self.state.router.own_id()
     }
 }
-pub enum OneResult {
-    FoundOne(NodeInfo, UnboundedSender<OneResult>),
+
+enum OneResult {
+    FoundSome(Vec<NodeInfo>),
     RemoveOne(NodeInfo),
 }
 #[derive(Debug)]
@@ -130,7 +140,7 @@ pub enum Found {
     KClosest(Vec<NodeInfo>),
 }
 
-pub struct NodeState {
+struct NodeState {
     router:      Router,
     transaction: AtomicUsize,
     read_only:   bool,

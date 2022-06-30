@@ -7,7 +7,7 @@ async fn ping() {
     let client_addr = "127.0.0.1:54321";
     let client_id = U160::rand();
     let client_node = node_info::NodeInfo { id: client_id, addr: SocketAddr::from_str(client_addr).unwrap() };
-    let client = Messenger::new(client_node.addr, 100, None, 1).await.unwrap();
+    let (client, _chandle) = Messenger::new(client_node.addr, 100, None, 1).await.unwrap();
 
     let server_addr = "127.0.0.1:12345";
     let server_id = U160::rand();
@@ -52,7 +52,7 @@ async fn timeout_readonly() {
     let client_addr = SocketAddr::from_str("127.0.0.1:34251").unwrap();
     let client_id = U160::rand();
     let client_node = node_info::NodeInfo { id: client_id, addr: client_addr };
-    let client = Messenger::new(client_node.addr, 100, None, 1).await.unwrap();
+    let (client, _chandle) = Messenger::new(client_node.addr, 100, None, 1).await.unwrap();
 
     let server_addr = "127.0.0.1:15243";
     let server_id = U160::rand();
