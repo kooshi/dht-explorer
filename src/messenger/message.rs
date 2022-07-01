@@ -1,8 +1,11 @@
 pub(crate) mod kmsg;
 mod message_impl;
 use self::kmsg::nodes::CompactIPv4NodeInfo;
-use crate::{node_info::NodeInfo, u160::U160};
-use std::{fmt::Display, net::SocketAddr, ops::Deref};
+use crate::node_info::NodeInfo;
+use crate::u160::U160;
+use std::fmt::Display;
+use std::net::SocketAddr;
+use std::ops::Deref;
 use typed_builder::TypedBuilder;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,18 +15,47 @@ pub enum Message {
     Error(Error),
 }
 
-pub type QueryResult = Result<Response, Error>;
+#[derive(TypedBuilder, Debug, Clone, PartialEq, Eq)]
+pub struct MessageBase {
+    pub origin:         NodeInfo,
+    pub destination:    SocketAddr,
+    pub transaction_id: u16,
+    #[builder(setter(strip_option))]
+    pub requestor_addr: Option<SocketAddr>,
+    #[builder(default)]
+    pub read_only:      bool,
+    #[builder(default)]
+    pub client:         Client,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query {
     pub method: QueryMethod,
     base:       MessageBase,
 }
+type InfoHash = U160;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueryMethod {
+    Ping,
+    FindNode(U160),
+    GetPeers(InfoHash),
+    AnnouncePeer(InfoHash), //add implied port
+    Put(kmsg::MessageArgsBep44),
+    Get,
+}
 
+pub type QueryResult = Result<Response, Error>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
     pub kind: ResponseKind,
     base:     MessageBase,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResponseKind {
+    Ok,
+    KNearest(Vec<NodeInfo>),
+    Peers(Vec<SocketAddr>),
+    Data(kmsg::response::KResponseBep44),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,37 +137,101 @@ impl IMessageBase for QueryResult {
     }
 }
 
-#[derive(TypedBuilder, Debug, Clone, PartialEq, Eq)]
-pub struct MessageBase {
-    pub origin:           NodeInfo,
-    pub transaction_id:   u16,
-    #[builder(setter(strip_option))]
-    pub destination_addr: Option<SocketAddr>,
-    #[builder(default)]
-    pub read_only:        bool,
-    //pub version:            [u8; 4],
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+pub struct Client {
+    name:    &'static str,
+    code:    [char; 2],
+    version: u16,
 }
 
-// pub struct Version {
-//     client: String,
-//     verison:
-// }
+impl Client {
+    pub fn to_bytes(&self) -> [u8; 4] {
+        let mut bytes = [0u8; 4];
+        bytes[0] = self.code[0] as u8;
+        bytes[1] = self.code[1] as u8;
+        bytes[2] = (self.version >> 8) as u8;
+        bytes[3] = (self.version & 0xff) as u8;
+        bytes
+    }
 
-type InfoHash = U160;
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum QueryMethod {
-    Ping,
-    FindNode(U160),
-    GetPeers(InfoHash),
-    AnnouncePeer(InfoHash), //add implied port
-    Put(kmsg::MessageArgsBep44),
-    Get,
+    pub fn from_bytes(bytes: [u8; 4]) -> Self {
+        let code = [bytes[0] as char, bytes[1] as char];
+        let version = (bytes[2] as u16) << 8 | (bytes[3] as u16);
+        Client {
+            name: match &bytes[..2] {
+                b"AG" => "Ares",
+                b"A~" => "Ares",
+                b"AR" => "Arctic",
+                b"AV" => "Avicora",
+                b"AX" => "BitPump",
+                b"AZ" => "Azureus",
+                b"BB" => "BitBuddy",
+                b"BC" => "BitComet",
+                b"BF" => "Bitflu",
+                b"BG" => "BTG (uses Rasterbar libtorrent)",
+                b"BR" => "BitRocket",
+                b"BS" => "BTSlave",
+                b"BX" => "~Bittorrent X",
+                b"CD" => "Enhanced CTorrent",
+                b"CT" => "CTorrent",
+                b"DE" => "DelugeTorrent",
+                b"DP" => "Propagate Data Client",
+                b"EB" => "EBit",
+                b"ES" => "electric sheep",
+                b"FT" => "FoxTorrent",
+                b"FW" => "FrostWire",
+                b"FX" => "Freebox BitTorrent",
+                b"GS" => "GSTorrent",
+                b"HL" => "Halite",
+                b"HN" => "Hydranode",
+                b"KG" => "KGet",
+                b"KT" => "KTorrent",
+                b"LH" => "LH-ABC",
+                b"LP" => "Lphant",
+                b"LT" => "libtorrent",
+                b"lt" => "libTorrent",
+                b"LW" => "LimeWire",
+                b"MO" => "MonoTorrent",
+                b"MP" => "MooPolice",
+                b"MR" => "Miro",
+                b"MT" => "MoonlightTorrent",
+                b"NX" => "Net Transport",
+                b"PD" => "Pando",
+                b"qB" => "qBittorrent",
+                b"QD" => "QQDownload",
+                b"QT" => "Qt 4 Torrent example",
+                b"RT" => "Retriever",
+                b"S~" => "Shareaza alpha/beta",
+                b"SB" => "~Swiftbit",
+                b"SS" => "SwarmScope",
+                b"ST" => "SymTorrent",
+                b"st" => "sharktorrent",
+                b"SZ" => "Shareaza",
+                b"TN" => "TorrentDotNET",
+                b"TR" => "Transmission",
+                b"TS" => "Torrentstorm",
+                b"TT" => "TuoTu",
+                b"UL" => "uLeecher!",
+                b"UT" => "µTorrent",
+                b"UW" => "µTorrent Web",
+                b"VG" => "Vagaa",
+                b"WD" => "WebTorrent Desktop",
+                b"WT" => "BitLet",
+                b"WW" => "WebTorrent",
+                b"WY" => "FireTorrent",
+                b"XL" => "Xunlei",
+                b"XT" => "XanTorrent",
+                b"XX" => "Xtorrent",
+                b"ZT" => "ZipTorrent",
+                _ => "Unknown",
+            },
+            code,
+            version,
+        }
+    }
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResponseKind {
-    Ok,
-    KNearest(Vec<NodeInfo>),
-    Peers(Vec<SocketAddr>),
-    Data(kmsg::response::KResponseBep44),
+impl Default for Client {
+    fn default() -> Self {
+        Client { name: "Unknown", code: ['U', 'U'], version: 0 }
+    }
 }

@@ -70,6 +70,21 @@ where T: Send + 'static
     }
 }
 
+pub trait MyFutureExt<T> {
+    fn into_remote(self) -> RemoteHandle<T>;
+}
+impl<T, F> MyFutureExt<T> for F
+where
+    T: Send + 'static,
+    F: Future<Output = T> + Send + 'static,
+{
+    fn into_remote(self) -> RemoteHandle<T> {
+        let (job, handle) = self.remote_handle();
+        tokio::spawn(job);
+        handle
+    }
+}
+
 // #[macro_export]
 // macro_rules! err_trc {
 //     () => {

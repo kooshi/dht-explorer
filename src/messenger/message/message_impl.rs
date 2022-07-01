@@ -1,7 +1,10 @@
-use super::{kmsg::{socket_addr_wrapper::SocketAddrWrapper, *}, *};
+use super::kmsg::socket_addr_wrapper::SocketAddrWrapper;
+use super::kmsg::*;
+use super::*;
 use serde::Serialize;
 use simple_error::{bail, map_err_with, simple_error, try_with, SimpleResult};
 use std::fmt::Display;
+use std::str::FromStr;
 
 impl Serialize for Message {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -68,7 +71,13 @@ impl Message {
     pub fn to_kmsg(&self) -> KMessage {
         let builder = KMessage::builder()
             .transaction_id(self.transaction_id.to_be_bytes().to_vec())
-            .peer_ip(socket_addr_wrapper::SocketAddrWrapper { socket_addr: self.destination_addr })
+            .requestor_ip(socket_addr_wrapper::SocketAddrWrapper {
+                socket_addr: match self {
+                    Message::Query(_) => Some(self.origin.addr),
+                    Message::Response(_) => self.requestor_addr,
+                    Message::Error(_) => None,
+                },
+            })
             .read_only(self.read_only);
         match &self {
             Message::Query(q) => {
@@ -117,10 +126,15 @@ impl Message {
 
     pub fn from_kmsg(origin_addr: SocketAddr, kmsg: KMessage) -> SimpleResult<Self> {
         let mut base = MessageBase {
-            origin:           NodeInfo { id: U160::empty(), addr: origin_addr },
-            transaction_id:   kmsg.transaction_id.as_chunks().0.iter().next().map_or(0, |c| u16::from_be_bytes(*c)),
-            destination_addr: if let Some(wrap) = kmsg.peer_ip { wrap.socket_addr } else { None },
-            read_only:        if let Some(ro) = kmsg.read_only { ro } else { false },
+            origin:         NodeInfo { id: U160::empty(), addr: origin_addr },
+            destination:    SocketAddr::from_str("127.0.0.1:1337").unwrap(),
+            transaction_id: kmsg.transaction_id.as_chunks().0.iter().next().map_or(0, |c| u16::from_be_bytes(*c)),
+            requestor_addr: if let Some(wrap) = kmsg.requestor_ip { wrap.socket_addr } else { None },
+            read_only:      if let Some(ro) = kmsg.read_only { ro } else { false },
+            client:         kmsg
+                .version
+                .and_then(|v| v.try_into().ok())
+                .map_or_else(Client::default, Client::from_bytes),
         };
 
         let message = match kmsg.message_type.as_str() {
@@ -226,8 +240,9 @@ mod test {
         let msg = MessageBase::builder()
             .origin(NodeInfo { id: U160::rand(), addr })
             .transaction_id(654)
-            .destination_addr(addr)
+            .requestor_addr(addr)
             .read_only(true)
+            .destination(addr)
             .build()
             .into_query(QueryMethod::Ping)
             .into_message();

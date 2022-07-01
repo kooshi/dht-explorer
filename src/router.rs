@@ -1,8 +1,10 @@
-use crate::{node_info::NodeInfo, u160::U160};
+use crate::node_info::NodeInfo;
+use crate::u160::U160;
 use bucket::Bucket;
 use log::{debug, info};
 use simple_error::SimpleResult;
-use std::{collections::VecDeque, net::IpAddr, path::PathBuf};
+use std::collections::VecDeque;
+use std::path::PathBuf;
 use tokio::sync::RwLock;
 mod bucket;
 
@@ -13,10 +15,8 @@ pub struct Router {
 const BAN_COUNT: usize = 100;
 const K_SIZE: u8 = 10;
 impl Router {
-    pub async fn new(bucket_file: PathBuf, public_ip: IpAddr) -> SimpleResult<Self> {
-        let buckets = Bucket::load_from_file(bucket_file)
-            .await
-            .unwrap_or_else(|_| Bucket::root(U160::from_ip(&public_ip), K_SIZE));
+    pub async fn new(bucket_file: PathBuf, node: NodeInfo) -> SimpleResult<Self> {
+        let buckets = Bucket::load_from_file(bucket_file).await.unwrap_or_else(|_| Bucket::root(node.id, K_SIZE));
         Ok(Self { buckets, banned_ids: RwLock::new(VecDeque::with_capacity(BAN_COUNT)) })
     }
 

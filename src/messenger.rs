@@ -4,26 +4,29 @@ use async_trait::async_trait;
 use futures::future::{FutureExt, RemoteHandle};
 use log::*;
 use simple_error::{map_err_with, require_with, try_with, SimpleResult};
-use std::{net::SocketAddr, ops::DerefMut, sync::{atomic::AtomicUsize, Arc}};
-use tokio::{net::UdpSocket, sync::{oneshot, Mutex, Semaphore}, time, time::Duration};
+use std::net::SocketAddr;
+use std::ops::DerefMut;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
+use tokio::net::UdpSocket;
+use tokio::sync::{oneshot, Mutex, Semaphore};
+use tokio::time;
+use tokio::time::Duration;
 pub(crate) mod message;
 #[cfg(test)]
 mod messenger_tests;
 mod service;
 use service::*;
 
-pub struct ServiceHandle(RemoteHandle<()>);
-impl !Send for ServiceHandle {}
-impl !Sync for ServiceHandle {}
-
 pub struct Messenger {
-    service: Service,
+    _recv_handle: RemoteHandle<()>,
+    service:      Service,
 }
 
 impl Messenger {
     pub async fn new(
         bind_addr: SocketAddr, timeout_ms: u16, query_handler: Option<WrappedQueryHandler>, max_q: u8,
-    ) -> SimpleResult<(Self, ServiceHandle)> {
+    ) -> SimpleResult<Self> {
         let socket = map_err_with!(UdpSocket::bind(bind_addr).await, "error binding host address")?;
         let queries_outbound = Mutex::new(Vec::with_capacity(20));
         let state = Arc::new(ServiceState {
@@ -35,12 +38,10 @@ impl Messenger {
             max_q: Semaphore::new(max_q.into()),
         });
         let service = Service { state };
-        let (job, recv_handle) = service.clone().recv().remote_handle();
-
-        let new = Messenger { service };
+        let (job, _recv_handle) = service.clone().recv().remote_handle();
+        let new = Messenger { _recv_handle, service };
         tokio::spawn(job);
-
-        Ok((new, ServiceHandle(recv_handle)))
+        Ok(new)
     }
 
     pub async fn send_message(&self, message: &Message) -> SimpleResult<()> {

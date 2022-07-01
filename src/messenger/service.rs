@@ -83,7 +83,7 @@ impl Service {
     pub async fn query(&self, query: &Query) -> QueryResult {
         let _permit = self.state.max_q.acquire().await;
         if cfg!(debug_assertions) && !cfg!(test) {
-            time::sleep(Duration::from_millis(1000)).await;
+            //time::sleep(Duration::from_millis(1000)).await;
         }
 
         let (return_tx, return_rx) = oneshot::channel();
@@ -133,13 +133,12 @@ impl Service {
             packet,
             message,
             message.transaction_id,
-            require_with!(message.destination_addr, "No send address")
+            require_with!(message.requestor_addr, "No send address")
         );
         debug!(" {} : Sending: {:?}", packet, message);
         let slice = message.to_bytes()?;
-        let addr = require_with!(message.destination_addr, "No send address");
         trace!(" {} : Sending: {}", packet, utils::safe_string_from_slice(&slice));
-        try_with!(self.state.socket.send_to(&slice, addr).await, "Send failed");
+        try_with!(self.state.socket.send_to(&slice, message.destination).await, "Send failed");
         Ok(())
     }
 }

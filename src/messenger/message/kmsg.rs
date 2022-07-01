@@ -1,4 +1,5 @@
-use crate::{node_info::{NodeInfo, IPV4_DHT_NODE_BYTES_LEN}, u160::U160};
+use crate::node_info::{NodeInfo, IPV4_DHT_NODE_BYTES_LEN};
+use crate::u160::U160;
 use error::Error;
 use nodes::CompactIPv4NodeInfo;
 use response::KResponse;
@@ -86,7 +87,7 @@ pub struct KMessage {
     #[serde(default)]
     #[serde(rename = "ip")]
     #[builder(default, setter(strip_option))]
-    pub peer_ip: Option<SocketAddrWrapper>,
+    pub requestor_ip: Option<SocketAddrWrapper>,
 
     // bep43: ro is a read only top level field
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -97,7 +98,7 @@ pub struct KMessage {
     #[builder(default, setter(strip_option))]
     pub read_only: Option<bool>,
 
-    // non standard field found in the wild
+    // client version
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(with = "serde_bytes")]
