@@ -11,6 +11,8 @@ use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
 use tokio::sync::OnceCell;
+use tokio::time;
+use tokio::time::Duration;
 
 static PARAMS: OnceCell<Parameters> = OnceCell::const_new();
 #[macro_export]
@@ -43,8 +45,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let public_ip = try_with!(IpAddr::from_str(param!().public_ip.as_ref().unwrap()), "invalid public ip");
     let node = Node::new(addr, false, public_ip).await?;
     node.bootstrap(peer).await?;
-    // let found = node.find_node(U160::rand()).await;
-    // info!("Found! {found:?}");
+    time::sleep(Duration::from_millis(10000)).await;
+    let found = node.find(U160::from_hex("B9FF4E7CE60DA918EB18D06AF1FDE0050D78E96E"), true).await;
+    info!("Found! {found:?}");
     tokio::signal::ctrl_c().await?;
     Ok(())
 }

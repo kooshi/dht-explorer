@@ -43,13 +43,13 @@ impl Node {
             "could not reach bootstrap node"
         );
         self.server.router.add(response.origin.into()).await;
-        let found = self.find_node(self.server.router.own_id()).await;
+        let found = self.find(self.server.router.own_id(), false).await;
         info!("Bootstrapped. Found {found:?}");
         info!("Bucket stats: {}", self.server.router.stats().await);
         Ok(())
     }
 
-    pub async fn find_node(&self, target: U160) -> Found {
+    pub async fn find(&self, target: U160, find_peers: bool) -> Found {
         let mut tasks = UnboundedConcurrentTaskSet::new();
         let state = self.server.clone();
         tasks.add_task(async move { OneResult::FoundSome(state.router.lookup(target).await) });
@@ -79,13 +79,14 @@ impl Node {
                             && seen.iter().position(|c| c.1.id == found.id).unwrap() < (crate::K_SIZE as usize * 2)
                         {
                             let selfclone = self.clone();
-                            tasks.add_task(async move { selfclone.send_find_node(found, target).await })
+                            tasks.add_task(async move { selfclone.send_find(found, target, find_peers).await })
                         }
                     },
                 OneResult::RemoveOne(n) => {
                     debug!("Ignoring node that didn't respond {n}");
                     ignore.insert(n);
                 }
+                OneResult::Peers(p) => return Found::Peers(p),
             }
         }
         Found::KClosest(
@@ -96,15 +97,18 @@ impl Node {
         )
     }
 
-    async fn send_find_node(&self, to: NodeInfo, id: U160) -> OneResult {
-        match self.messenger.query(&self.build_query(to.into(), QueryMethod::FindNode(id))).await {
+    async fn send_find(&self, to: NodeInfo, target: U160, find_peers: bool) -> OneResult {
+        let method = if find_peers { QueryMethod::GetPeers(target) } else { QueryMethod::FindNode(target) };
+        match self.messenger.query(&self.build_query(to.into(), method)).await {
             Ok(r) => {
                 self.server.router.add(r.origin.into()).await;
-                if let ResponseKind::KNearest(nodes) = r.kind {
-                    OneResult::FoundSome(nodes)
-                } else {
-                    warn!("unexpected find node response");
-                    OneResult::RemoveOne(to)
+                match r.kind {
+                    ResponseKind::KNearest(n) => OneResult::FoundSome(n),
+                    ResponseKind::Peers(p) if find_peers => OneResult::Peers(p),
+                    _ => {
+                        warn!("unexpected find node response");
+                        OneResult::RemoveOne(to)
+                    }
                 }
             }
             Err(e) => {
@@ -130,12 +134,14 @@ impl Node {
 enum OneResult {
     FoundSome(Vec<NodeInfo>),
     RemoveOne(NodeInfo),
+    Peers(Vec<SocketAddr>),
 }
 
 #[derive(Debug)]
 pub enum Found {
     Target(NodeInfo),
     KClosest(Vec<NodeInfo>),
+    Peers(Vec<SocketAddr>),
 }
 
 impl Server {
