@@ -3,6 +3,7 @@
 #![feature(slice_as_chunks)]
 #![feature(iter_next_chunk)]
 #![feature(negative_impls)]
+#![feature(array_windows)]
 mod messenger;
 pub mod node;
 mod node_info;

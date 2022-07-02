@@ -1,4 +1,4 @@
-use crate::messenger::message::{KnownError, MessageBase, Query, QueryResult, ResponseKind};
+use crate::messenger::message::{self, KnownError, MessageBase, Query, QueryResult, Receiver, ResponseKind, Sender};
 use crate::messenger::{self, Messenger, QueryHandler, WrappedQueryHandler};
 use crate::node_info::NodeInfo;
 use crate::router::Router;
@@ -10,7 +10,6 @@ use messenger::message::QueryMethod;
 use simple_error::{try_with, SimpleResult};
 use std::collections::{BTreeSet, HashSet};
 use std::net::{IpAddr, SocketAddr};
-use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -40,10 +39,10 @@ impl Node {
 
     pub async fn bootstrap(&self, bootstrap_node: SocketAddr) -> SimpleResult<()> {
         let response = try_with!(
-            self.messenger.query(&self.build_query(bootstrap_node, QueryMethod::Ping)).await,
+            self.messenger.query(&self.build_query(Receiver::Addr(bootstrap_node), QueryMethod::Ping)).await,
             "could not reach bootstrap node"
         );
-        self.server.router.add(response.origin).await;
+        self.server.router.add(response.origin.into()).await;
         let found = self.find_node(self.server.router.own_id()).await;
         info!("Bootstrapped. Found {found:?}");
         info!("Bucket stats: {}", self.server.router.stats().await);
@@ -98,9 +97,9 @@ impl Node {
     }
 
     async fn send_find_node(&self, to: NodeInfo, id: U160) -> OneResult {
-        match self.messenger.query(&self.build_query(to.addr, QueryMethod::FindNode(id))).await {
+        match self.messenger.query(&self.build_query(to.into(), QueryMethod::FindNode(id))).await {
             Ok(r) => {
-                self.server.router.add(r.origin).await;
+                self.server.router.add(r.origin.into()).await;
                 if let ResponseKind::KNearest(nodes) = r.kind {
                     OneResult::FoundSome(nodes)
                 } else {
@@ -116,13 +115,13 @@ impl Node {
         }
     }
 
-    fn build_query(&self, to: SocketAddr, method: QueryMethod) -> Query {
+    fn build_query(&self, to: Receiver, method: QueryMethod) -> Query {
         MessageBase::builder()
             .transaction_id(self.server.transaction.fetch_add(1, Ordering::Relaxed) as u16)
             .destination(to)
-            .origin(self.server.me)
+            .origin(Sender::Me(self.server.me))
             .read_only(self.server.read_only)
-            .requestor_addr(self.server.me.addr)
+            .requestor_addr(Some(self.server.me.addr))
             .build()
             .into_query(method)
     }
@@ -139,19 +138,25 @@ pub enum Found {
     KClosest(Vec<NodeInfo>),
 }
 
+impl Server {
+    fn response_base(&self, tid: u16, to: Receiver) -> MessageBase {
+        MessageBase::builder()
+            .origin(Sender::Me(self.me))
+            .transaction_id(tid)
+            .destination(to)
+            .requestor_addr(to.into())
+            .build()
+    }
+}
+
 #[async_trait]
 impl QueryHandler for Server {
     async fn handle_query(&self, query: Query) -> QueryResult {
         assert!(!self.read_only);
         if !query.read_only {
-            self.router.add(query.origin).await;
+            self.router.add(query.origin.into()).await;
         }
-        let response_base = MessageBase::builder()
-            .origin(NodeInfo { id: self.router.own_id(), addr: SocketAddr::from_str("127.0.0.1:1337").unwrap() }) //TODO fix addr later, doesn't really matter
-            .transaction_id(query.transaction_id)
-            .destination(query.origin.addr)
-            .requestor_addr(query.origin.addr)
-            .build();
+        let response_base = self.response_base(query.transaction_id, query.origin.into());
         match query.method {
             QueryMethod::Ping => Ok(response_base.into_response(ResponseKind::Ok)),
             QueryMethod::FindNode(n) =>
@@ -162,5 +167,9 @@ impl QueryHandler for Server {
             QueryMethod::Put(_) => Err(response_base.into_error(KnownError::MethodUnknown)),
             QueryMethod::Get => Err(response_base.into_error(KnownError::MethodUnknown)),
         }
+    }
+
+    async fn handle_error(&self, tid: u16, source_addr: SocketAddr) -> message::Error {
+        self.response_base(tid, Receiver::Addr(source_addr)).into_error(message::KnownError::Server)
     }
 }

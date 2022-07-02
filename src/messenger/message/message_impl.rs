@@ -4,7 +4,6 @@ use super::*;
 use serde::Serialize;
 use simple_error::{bail, map_err_with, simple_error, try_with, SimpleResult};
 use std::fmt::Display;
-use std::str::FromStr;
 
 impl Serialize for Message {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -73,7 +72,7 @@ impl Message {
             .transaction_id(self.transaction_id.to_be_bytes().to_vec())
             .requestor_ip(socket_addr_wrapper::SocketAddrWrapper {
                 socket_addr: match self {
-                    Message::Query(_) => Some(self.origin.addr),
+                    Message::Query(_) => Some(self.origin.addr()),
                     Message::Response(_) => self.requestor_addr,
                     Message::Error(_) => None,
                 },
@@ -81,7 +80,7 @@ impl Message {
             .read_only(self.read_only);
         match &self {
             Message::Query(q) => {
-                let mut args = kmsg::MessageArgs::builder().id(self.origin.id).build();
+                let mut args = kmsg::MessageArgs::builder().id(self.origin.id()).build();
                 let builder = builder.message_type(kmsg::Y_QUERY);
                 let builder = match &q.method {
                     QueryMethod::Ping => builder.query_method(Q_PING),
@@ -107,7 +106,7 @@ impl Message {
             }
             Message::Response(r) => {
                 let builder = builder.message_type(kmsg::Y_RESPONSE);
-                let mut response = response::KResponse::builder().id(self.origin.id).build();
+                let mut response = response::KResponse::builder().id(self.origin.id()).build();
                 match &r.kind {
                     ResponseKind::Ok => (),
                     ResponseKind::KNearest(nodes) =>
@@ -126,8 +125,8 @@ impl Message {
 
     pub fn from_kmsg(origin_addr: SocketAddr, kmsg: KMessage) -> SimpleResult<Self> {
         let mut base = MessageBase {
-            origin:         NodeInfo { id: U160::empty(), addr: origin_addr },
-            destination:    SocketAddr::from_str("127.0.0.1:1337").unwrap(),
+            origin:         Sender::Remote(NodeInfo { id: U160::empty(), addr: origin_addr }),
+            destination:    Receiver::Me,
             transaction_id: kmsg.transaction_id.as_chunks().0.iter().next().map_or(0, |c| u16::from_be_bytes(*c)),
             requestor_addr: if let Some(wrap) = kmsg.requestor_ip { wrap.socket_addr } else { None },
             read_only:      if let Some(ro) = kmsg.read_only { ro } else { false },
@@ -145,7 +144,7 @@ impl Message {
             kmsg::Y_QUERY => {
                 let err = simple_error!("stated query type but no query data");
                 if let Some(args) = kmsg.arguments {
-                    base.origin = NodeInfo { id: args.id, addr: origin_addr };
+                    base.origin = Sender::Remote(NodeInfo { id: args.id, addr: origin_addr });
                     Message::Query(Query {
                         base,
                         method: match kmsg.query_method.ok_or_else(|| err.clone())?.as_str() {
@@ -165,7 +164,7 @@ impl Message {
             kmsg::Y_RESPONSE => {
                 let err = simple_error!("stated response type but no response data");
                 if let Some(response) = kmsg.response {
-                    base.origin = NodeInfo { id: response.id, addr: origin_addr };
+                    base.origin = Sender::Remote(NodeInfo { id: response.id, addr: origin_addr });
                     Message::Response(Response {
                         base,
                         kind: if let Some(nodes) = response.nodes {
@@ -188,24 +187,46 @@ impl Message {
     }
 }
 
-impl Display for Message {
+impl Display for Receiver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Receiver::Node(n) => write!(f, "{}", n),
+            Receiver::Addr(a) => write!(f, "[{}]", a),
+            Receiver::Me => write!(f, "[Me]"),
+        }
+    }
+}
+
+impl Display for Sender {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Sender::Remote(n) => write!(f, "{}", n),
+            Sender::Me(_n) => write!(f, "[Me]"),
+        }
+    }
+}
+
+impl Display for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let dest = &self.destination;
+        let orig = self.origin;
+        write!(f, "[T:{}]", self.transaction_id)?;
+        match self {
             Message::Query(q) => match q.method {
-                QueryMethod::Ping => write!(f, "Ping"),
-                QueryMethod::FindNode(_) => write!(f, "Find Node Query"),
-                QueryMethod::GetPeers(_) => write!(f, "Get Peers Query"),
-                QueryMethod::AnnouncePeer(_) => write!(f, "Announce Query"),
-                QueryMethod::Put(_) => write!(f, "Put Data Query"),
-                QueryMethod::Get => write!(f, "Get Data Query"),
+                QueryMethod::Ping => write!(f, "{orig} pings {dest}"),
+                QueryMethod::FindNode(n) => write!(f, "{orig} asks {dest} where is {n}?"),
+                QueryMethod::GetPeers(i) => write!(f, "{orig} asks {dest} who has {i}"),
+                QueryMethod::AnnouncePeer(i) => write!(f, "{orig} tells {dest} that it owns {i}"),
+                QueryMethod::Put(_) => write!(f, "{orig} stores data at {dest}"),
+                QueryMethod::Get => write!(f, "{orig} requests data from {dest}"),
             },
-            Message::Response(r) => match r.kind {
-                ResponseKind::Ok => write!(f, "Ok Response"),
-                ResponseKind::KNearest(_) => write!(f, "K Nearest Response"),
-                ResponseKind::Peers(_) => write!(f, "Peer Response"),
-                ResponseKind::Data(_) => write!(f, "Data Response"),
+            Message::Response(r) => match &r.kind {
+                ResponseKind::Ok => write!(f, "{orig} tells {dest} Ok"),
+                ResponseKind::KNearest(k) => write!(f, "{orig} gives {dest} {} nodes", k.len()),
+                ResponseKind::Peers(p) => write!(f, "{orig} gives {dest} {} peers", p.len()),
+                ResponseKind::Data(_) => write!(f, "{orig} gives {dest} data"),
             },
-            Message::Error(Error { code: n, .. }) => write!(f, "Error {}", n),
+            Message::Error(e) => write!(f, "{orig} tells {dest} {}", e),
         }
     }
 }
@@ -237,12 +258,14 @@ mod test {
     #[test]
     pub fn ping() {
         let addr = SocketAddr::from_str("127.0.0.1:1337").unwrap();
+        let me = Sender::Me(NodeInfo { id: U160::rand(), addr });
+        let dest = Receiver::Addr(addr);
         let msg = MessageBase::builder()
-            .origin(NodeInfo { id: U160::rand(), addr })
+            .origin(me)
             .transaction_id(654)
-            .requestor_addr(addr)
+            .requestor_addr(Some(me.addr()))
             .read_only(true)
-            .destination(addr)
+            .destination(dest)
             .build()
             .into_query(QueryMethod::Ping)
             .into_message();

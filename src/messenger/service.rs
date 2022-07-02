@@ -31,19 +31,27 @@ impl Service {
             if result.is_err() {
                 error!("Waiting for UDP Socket: {:?}", result);
             }
-            // Try to recv data, this may still fail with `WouldBlock`
-            // if the readiness event is a false positive.
             match self.state.socket.try_recv_from(buffer.deref_mut()) {
                 Ok((n, from)) => {
                     let packet = self.state.packet_num.fetch_add(1, Ordering::Relaxed);
                     let slice = &buffer[..n];
-                    trace!(" {} : Received: {}", packet, utils::safe_string_from_slice(slice));
-                    debug!(" {} : Received: {}", packet, base64::encode(slice));
-                    let message = Message::receive(slice, from);
-                    if let Ok(message) = message {
+                    trace!("[P:{packet}] <<<<< {}", utils::safe_string_from_slice(slice));
+                    debug!("[P:{packet}] <<<<< {}", base64::encode(slice));
+                    let result = Message::receive(slice, from);
+                    if let Ok(message) = result {
                         tokio::spawn(self.clone().handle_received(packet, message));
                     } else {
-                        error!(" {} :Deserializing Message: {:?}", packet, message);
+                        error!("[P:{packet}] Deserializing Message: {result:?} (CULPRIT: {})", base64::encode(slice));
+                        if slice.windows(6).any(|w| w == b"1:y1:q") {
+                            //probably a failed query, we can send error
+                            let tid = slice
+                                .windows(7)
+                                .find(|w| w.starts_with(b"1:t2:"))
+                                .map_or(0, |s| u16::from_be_bytes([s[5], s[6]]));
+                            if let Some(handler) = &self.state.queries_inbound {
+                                self.send_message(&handler.handle_error(tid, from).await.into_message()).await.log();
+                            }
+                        }
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
@@ -55,8 +63,8 @@ impl Service {
     }
 
     async fn handle_received(self, packet: usize, message: Message) {
-        debug!(" {} : Received: {:?}", packet, message);
-        info!(" {} : Received {} [{}] from {}", packet, message, message.transaction_id, message.origin.addr);
+        debug!("[P:{packet}] <<<<< {message:?}");
+        info!("[P:{packet}]{message}");
 
         let id = message.transaction_id;
         match message {
@@ -72,18 +80,18 @@ impl Service {
     }
 
     async fn return_result(&self, id: u16, result: QueryResult) {
-        if let Some(waiting) = self.remove_from_queue(id, result.base().origin.addr).await {
-            trace!("Returning value for [{}]", id);
+        if let Some(waiting) = self.remove_from_queue(id, result.base().origin.addr()).await {
+            trace!("Returning value for [T:{id}]");
             waiting.return_value.send(result).ok();
         } else {
-            warn!("No one waiting for response [{}]", id);
+            warn!("No one waiting for response [T:{id}]");
         }
     }
 
     pub async fn query(&self, query: &Query) -> QueryResult {
         let _permit = self.state.max_q.acquire().await;
         if cfg!(debug_assertions) && !cfg!(test) {
-            //time::sleep(Duration::from_millis(1000)).await;
+            time::sleep(Duration::from_millis(1000)).await;
         }
 
         let (return_tx, return_rx) = oneshot::channel();
@@ -91,11 +99,11 @@ impl Service {
             let mut queue = self.state.queries_outbound.lock().await;
             queue.push(OutstandingQuery {
                 transaction_id:   query.transaction_id,
-                destination_addr: query.origin.addr,
+                destination_addr: query.origin.addr(),
                 return_value:     return_tx,
             });
         }
-        trace!("Query [{}] added to outstanding", query.transaction_id);
+        trace!("Query [T:{}] added to outstanding", query.transaction_id);
         let message = query.clone().into_message();
         self.send_message(&message).await.map_err(|e| message.base().clone().into_error_generic(&e.to_string()))?;
 
@@ -105,15 +113,15 @@ impl Service {
                 m.map_or_else(
                 |e|Result::Err(message.base().clone().into_error_generic(&e.to_string())),|r|r) }
             _ = sleep => {
-                self.remove_from_queue(message.transaction_id, message.origin.addr).await;
-                warn!("Query [{}] timed out", message.transaction_id);
+                self.remove_from_queue(message.transaction_id, message.origin.addr()).await;
+                warn!("Query [T:{}] timed out", message.transaction_id);
                 Result::Err(message.base().clone().into_error_generic("Timeout"))
             }
         }
     }
 
     async fn remove_from_queue(&self, id: u16, queried_addr: SocketAddr) -> Option<OutstandingQuery> {
-        trace!("Removing [{}] from queue", id);
+        trace!("Removing [T:{id}] from queue");
         let mut queue = self.state.queries_outbound.lock().await;
         queue
             .iter()
@@ -128,17 +136,16 @@ impl Service {
         }
 
         let packet = self.state.packet_num.fetch_add(1, Ordering::Relaxed);
-        info!(
-            " {} : Sending {} [{}] to {}",
-            packet,
-            message,
-            message.transaction_id,
-            require_with!(message.requestor_addr, "No send address")
-        );
-        debug!(" {} : Sending: {:?}", packet, message);
+        info!("[P:{packet}]{message}");
+        debug!("[P:{packet}] >>>>> {message:?}");
         let slice = message.to_bytes()?;
-        trace!(" {} : Sending: {}", packet, utils::safe_string_from_slice(&slice));
-        try_with!(self.state.socket.send_to(&slice, message.destination).await, "Send failed");
+        trace!("[P:{packet}] >>>>> {}", utils::safe_string_from_slice(&slice));
+        let addr = match message.destination {
+            message::Receiver::Node(n) => n.addr,
+            message::Receiver::Addr(a) => a,
+            message::Receiver::Me => bail!("You probably didn't mean to message yourself like this"),
+        };
+        try_with!(self.state.socket.send_to(&slice, addr).await, "Send failed");
         Ok(())
     }
 }

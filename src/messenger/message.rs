@@ -17,15 +17,27 @@ pub enum Message {
 
 #[derive(TypedBuilder, Debug, Clone, PartialEq, Eq)]
 pub struct MessageBase {
-    pub origin:         NodeInfo,
-    pub destination:    SocketAddr,
-    pub transaction_id: u16,
-    #[builder(setter(strip_option))]
+    pub origin:         Sender,
+    pub destination:    Receiver,
     pub requestor_addr: Option<SocketAddr>,
+    pub transaction_id: u16,
     #[builder(default)]
     pub read_only:      bool,
     #[builder(default)]
     pub client:         Client,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub enum Sender {
+    Remote(NodeInfo),
+    Me(NodeInfo),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub enum Receiver {
+    Node(NodeInfo),
+    Addr(SocketAddr),
+    Me,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +145,51 @@ impl IMessageBase for QueryResult {
         match self {
             Ok(r) => &r.base,
             Err(e) => &e.base,
+        }
+    }
+}
+impl Sender {
+    pub fn addr(&self) -> SocketAddr {
+        match self {
+            Sender::Remote(r) => r.addr,
+            Sender::Me(m) => m.addr,
+        }
+    }
+
+    pub fn id(&self) -> U160 {
+        match self {
+            Sender::Remote(r) => r.id,
+            Sender::Me(m) => m.id,
+        }
+    }
+}
+impl From<Sender> for Receiver {
+    fn from(s: Sender) -> Self {
+        match s {
+            Sender::Remote(n) => Receiver::Node(n),
+            Sender::Me(n) => Receiver::Node(n),
+        }
+    }
+}
+impl From<Sender> for NodeInfo {
+    fn from(s: Sender) -> Self {
+        match s {
+            Sender::Remote(n) => n,
+            Sender::Me(n) => n,
+        }
+    }
+}
+impl From<NodeInfo> for Receiver {
+    fn from(n: NodeInfo) -> Self {
+        Receiver::Node(n)
+    }
+}
+impl From<Receiver> for Option<SocketAddr> {
+    fn from(r: Receiver) -> Self {
+        match r {
+            Receiver::Node(n) => Some(n.addr),
+            Receiver::Addr(a) => Some(a),
+            Receiver::Me => None,
         }
     }
 }

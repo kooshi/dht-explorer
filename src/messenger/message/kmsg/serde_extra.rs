@@ -1,5 +1,6 @@
 use crate::u160::U160;
-use serde::{de::{Error, Unexpected}, Deserialize, Deserializer, Serialize, Serializer};
+use serde::de::{Error, Unexpected};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 impl Serialize for U160 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -16,7 +17,7 @@ impl<'de> Deserialize<'de> for U160 {
             type Value = U160;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("expected 20 big endian bytes")
+                formatter.write_str("20 big endian bytes")
             }
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>

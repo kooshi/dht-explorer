@@ -3,7 +3,7 @@ use crate::utils::{self, LogErrExt};
 use async_trait::async_trait;
 use futures::future::{FutureExt, RemoteHandle};
 use log::*;
-use simple_error::{map_err_with, require_with, try_with, SimpleResult};
+use simple_error::{map_err_with, try_with, SimpleResult};
 use std::net::SocketAddr;
 use std::ops::DerefMut;
 use std::sync::atomic::AtomicUsize;
@@ -58,4 +58,5 @@ pub type WrappedQueryHandler = Arc<dyn QueryHandler + Send + Sync>;
 #[async_trait]
 pub trait QueryHandler {
     async fn handle_query(&self, query: Query) -> QueryResult;
+    async fn handle_error(&self, tid: u16, source_addr: SocketAddr) -> message::Error;
 }

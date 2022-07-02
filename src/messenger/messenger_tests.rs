@@ -18,8 +18,8 @@ async fn ping() {
     let _server = Messenger::new(server_node.addr, 100, Some(handler), 1).await.unwrap();
 
     let querybase = MessageBase {
-        origin:         client_node,
-        destination:    server_node.addr,
+        origin:         Sender::Me(client_node),
+        destination:    Receiver::Node(server_node),
         transaction_id: 123,
         requestor_addr: Some(client_node.addr),
         read_only:      true,
@@ -30,8 +30,8 @@ async fn ping() {
     let response = response.unwrap();
     assert!(!response.read_only);
     assert_eq!(response.kind, ResponseKind::Ok);
-    assert_eq!(response.origin.id, server_id);
-    assert_eq!(response.origin.addr, server_node.addr);
+    assert_eq!(response.origin.id(), server_id);
+    assert_eq!(response.origin.addr(), server_node.addr);
     assert_eq!(response.requestor_addr, Some(client_node.addr));
 }
 
@@ -42,14 +42,26 @@ struct TestHandler {
 impl QueryHandler for TestHandler {
     async fn handle_query(&self, query: Query) -> QueryResult {
         let returnbase = MessageBase {
-            origin:         self.info,
-            destination:    query.origin.addr,
+            origin:         Sender::Me(self.info),
+            destination:    query.origin.into(),
             transaction_id: query.transaction_id,
-            requestor_addr: Some(query.origin.addr),
+            requestor_addr: Some(query.origin.addr()),
             read_only:      false,
             client:         Client::default(),
         };
         Ok(returnbase.into_response(ResponseKind::Ok))
+    }
+
+    async fn handle_error(&self, tid: u16, to: SocketAddr) -> message::Error {
+        let returnbase = MessageBase {
+            origin:         Sender::Me(self.info),
+            destination:    Receiver::Addr(to),
+            transaction_id: tid,
+            requestor_addr: Some(to),
+            read_only:      false,
+            client:         Client::default(),
+        };
+        returnbase.into_error(KnownError::Server)
     }
 }
 
@@ -66,8 +78,8 @@ async fn timeout_readonly() {
     let _ro_server = Messenger::new(server_node.addr, 100, None, 1).await.unwrap();
 
     let querybase = MessageBase {
-        origin:         client_node,
-        destination:    server_node.addr,
+        origin:         Sender::Me(client_node),
+        destination:    Receiver::Node(server_node),
         transaction_id: 321,
         requestor_addr: Some(client_node.addr),
         read_only:      true,
@@ -80,7 +92,7 @@ async fn timeout_readonly() {
         false
     });
     let response = response.unwrap_err();
-    assert_eq!(response.origin.id, client_id);
-    assert_eq!(response.origin.addr, client_addr);
+    assert_eq!(response.origin.id(), client_id);
+    assert_eq!(response.origin.addr(), client_addr);
     assert_eq!(response.requestor_addr, Some(client_node.addr));
 }

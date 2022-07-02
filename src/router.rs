@@ -13,10 +13,10 @@ pub struct Router {
     banned_ids: RwLock<VecDeque<U160>>,
 }
 const BAN_COUNT: usize = 100;
-const K_SIZE: u8 = 10;
 impl Router {
     pub async fn new(bucket_file: PathBuf, node: NodeInfo) -> SimpleResult<Self> {
-        let buckets = Bucket::load_from_file(bucket_file).await.unwrap_or_else(|_| Bucket::root(node.id, K_SIZE));
+        let buckets =
+            Bucket::load_from_file(bucket_file).await.unwrap_or_else(|_| Bucket::root(node.id, crate::K_SIZE));
         Ok(Self { buckets, banned_ids: RwLock::new(VecDeque::with_capacity(BAN_COUNT)) })
     }
 
