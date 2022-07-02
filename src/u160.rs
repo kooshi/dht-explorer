@@ -1,7 +1,9 @@
 extern crate hex;
 use crate::utils::{Ipv4AddrExt, Ipv6AddrExt};
 use crc32c::crc32c;
-use std::{fmt, net::IpAddr, ops::*};
+use std::fmt;
+use std::net::IpAddr;
+use std::ops::*;
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct U160 {
     msbytes: u128,
@@ -151,20 +153,21 @@ impl Shl<u8> for U160 {
 
 impl fmt::Display for U160 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.to_be_bytes()))
+        write!(f, "{}", base64::encode(self.to_be_bytes()))
     }
 }
 
 impl fmt::Debug for U160 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.to_be_bytes()))
+        write!(f, "{}", base64::encode(self.to_be_bytes()))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::U160;
-    use std::{net::IpAddr, str::FromStr};
+    use std::net::IpAddr;
+    use std::str::FromStr;
 
     #[test]
     fn new() {

@@ -153,10 +153,13 @@ impl Server {
 impl QueryHandler for Server {
     async fn handle_query(&self, query: Query) -> QueryResult {
         assert!(!self.read_only);
+        let response_base = self.response_base(query.transaction_id, query.origin.into());
+        if query.origin.id() == self.me.id {
+            return Err(response_base.into_error_generic("Echo!"));
+        }
         if !query.read_only {
             self.router.add(query.origin.into()).await;
         }
-        let response_base = self.response_base(query.transaction_id, query.origin.into());
         match query.method {
             QueryMethod::Ping => Ok(response_base.into_response(ResponseKind::Ok)),
             QueryMethod::FindNode(n) =>

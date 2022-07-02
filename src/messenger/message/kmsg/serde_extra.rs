@@ -13,6 +13,13 @@ impl<'de> Deserialize<'de> for U160 {
     fn deserialize<D>(deserializer: D) -> Result<U160, D::Error>
     where D: Deserializer<'de> {
         struct U160Visitor {}
+        impl U160Visitor {
+            fn make(v: &[u8]) -> U160 {
+                let mut bytes = [0_u8; 20];
+                bytes.copy_from_slice(v);
+                U160::from_be_bytes(&bytes)
+            }
+        }
         impl<'de> serde::de::Visitor<'de> for U160Visitor {
             type Value = U160;
 
@@ -22,13 +29,15 @@ impl<'de> Deserialize<'de> for U160 {
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
             where E: serde::de::Error {
-                if v.len() != 20 {
+                if v.len() > 20 {
                     return Err(Error::invalid_length(v.len(), &self));
                 }
-
-                let mut bytes = [0_u8; 20];
-                bytes.copy_from_slice(v);
-                Ok(U160::from_be_bytes(&bytes))
+                if v.len() < 20 {
+                    //some stupid nodes return a 2 byte id????
+                    Ok(U160Visitor::make(&vec![vec![0; 20 - v.len()], v.to_vec()].concat()))
+                } else {
+                    Ok(U160Visitor::make(v))
+                }
             }
         }
         deserializer.deserialize_bytes(U160Visitor {})
