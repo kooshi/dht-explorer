@@ -68,6 +68,7 @@ impl Node {
         }
         let mut ignore = HashSet::new();
         let mut seen = BTreeSet::new();
+        let mut peers = HashSet::new();
         while let Some(one_result) = tasks.get_next_result().await {
             match one_result {
                 OneResult::FoundSome(found) =>
@@ -86,15 +87,21 @@ impl Node {
                     debug!("Ignoring node that didn't respond {n}");
                     ignore.insert(n);
                 }
-                OneResult::Peers(p) => return Found::Peers(p),
+                OneResult::Peers(mut p) => p.drain(..).for_each(|p| {
+                    peers.insert(p);
+                }),
             }
         }
-        Found::KClosest(
-            seen.iter()
-                .filter_map(|n| if ignore.contains(&n.1) { None } else { Some(n.1) })
-                .take(crate::K_SIZE as usize)
-                .collect(),
-        )
+        if !peers.is_empty() {
+            Found::Peers(peers)
+        } else {
+            Found::KClosest(
+                seen.iter()
+                    .filter_map(|n| if ignore.contains(&n.1) { None } else { Some(n.1) })
+                    .take(crate::K_SIZE as usize)
+                    .collect(),
+            )
+        }
     }
 
     async fn send_find(&self, to: NodeInfo, target: U160, find_peers: bool) -> OneResult {
@@ -141,7 +148,7 @@ enum OneResult {
 pub enum Found {
     Target(NodeInfo),
     KClosest(Vec<NodeInfo>),
-    Peers(Vec<SocketAddr>),
+    Peers(HashSet<SocketAddr>),
 }
 
 impl Server {
