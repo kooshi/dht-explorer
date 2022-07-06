@@ -122,7 +122,7 @@ pub struct MessageArgs {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[builder(default, setter(strip_option))]
-    port: Option<u16>,
+    pub port: Option<u16>,
 
     // Use senders apparent DHT port
     #[serde(skip_serializing_if = "Option::is_none")]

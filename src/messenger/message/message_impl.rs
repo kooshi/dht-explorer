@@ -2,7 +2,7 @@ use super::kmsg::socket_addr_wrapper::SocketAddrWrapper;
 use super::kmsg::*;
 use super::*;
 use serde::Serialize;
-use simple_error::{bail, map_err_with, simple_error, try_with, SimpleResult};
+use simple_error::{bail, map_err_with, require_with, simple_error, try_with, SimpleResult};
 use std::fmt::Display;
 
 impl Serialize for Message {
@@ -92,8 +92,10 @@ impl Message {
                         args.info_hash = Some(*info_hash);
                         builder.query_method(Q_GET_PEERS)
                     }
-                    QueryMethod::AnnouncePeer(info_hash) => {
+                    QueryMethod::AnnouncePeer { info_hash, port, token } => {
                         args.info_hash = Some(*info_hash);
+                        args.token = Some(token.clone());
+                        args.port = Some(*port);
                         builder.query_method(Q_ANNOUNCE_PEER)
                     }
                     QueryMethod::Put(base) => {
@@ -109,11 +111,15 @@ impl Message {
                 let mut response = response::KResponse::builder().id(self.origin.id()).build();
                 match &r.kind {
                     ResponseKind::Ok => (),
-                    ResponseKind::KNearest(nodes) =>
-                        response.nodes = Some(CompactIPv4NodeInfo { dht_nodes: nodes.clone() }),
-                    ResponseKind::Peers(peers) =>
+                    ResponseKind::KNearest { nodes, token } => {
+                        response.nodes = Some(CompactIPv4NodeInfo { dht_nodes: nodes.clone() });
+                        response.token = token.clone();
+                    }
+                    ResponseKind::Peers { peers, token } => {
                         response.values =
-                            Some(peers.iter().map(|p| SocketAddrWrapper { socket_addr: Some(*p) }).collect()),
+                            Some(peers.iter().map(|p| SocketAddrWrapper { socket_addr: Some(*p) }).collect());
+                        response.token = Some(token.clone());
+                    }
                     ResponseKind::Data(base) => response.bep44 = base.clone(),
                 };
                 builder.response(response).build()
@@ -150,7 +156,15 @@ impl Message {
                         method: match kmsg.query_method.ok_or_else(|| err.clone())?.as_str() {
                             kmsg::Q_PING => QueryMethod::Ping,
                             kmsg::Q_FIND_NODE => QueryMethod::FindNode(args.target.ok_or(err)?),
-                            kmsg::Q_ANNOUNCE_PEER => QueryMethod::AnnouncePeer(args.info_hash.ok_or(err)?),
+                            kmsg::Q_ANNOUNCE_PEER => QueryMethod::AnnouncePeer {
+                                info_hash: args.info_hash.ok_or(err)?,
+                                token:     require_with!(args.token, "announce with no token"),
+                                port:      if args.implied_port.unwrap_or(false) || args.port.is_none() {
+                                    origin_addr.port()
+                                } else {
+                                    args.port.unwrap()
+                                },
+                            },
                             kmsg::Q_GET_PEERS => QueryMethod::GetPeers(args.info_hash.ok_or(err)?),
                             kmsg::Q_PUT => QueryMethod::Put(args.bep44),
                             kmsg::Q_GET => QueryMethod::Get,
@@ -168,9 +182,12 @@ impl Message {
                     Message::Response(Response {
                         base,
                         kind: if let Some(nodes) = response.nodes {
-                            ResponseKind::KNearest(nodes.dht_nodes)
+                            ResponseKind::KNearest { nodes: nodes.dht_nodes, token: response.token }
                         } else if let Some(peers) = response.values {
-                            ResponseKind::Peers(peers.iter().filter_map(|p| p.socket_addr).collect())
+                            ResponseKind::Peers {
+                                peers: peers.iter().filter_map(|p| p.socket_addr).collect(),
+                                token: require_with!(response.token, "returned peers with no token"),
+                            }
                         } else if response.bep44.v.is_some() {
                             ResponseKind::Data(response.bep44)
                         } else {
@@ -212,18 +229,25 @@ impl Display for Message {
         let orig = self.origin;
         write!(f, "[T:{}]", self.transaction_id)?;
         match self {
-            Message::Query(q) => match q.method {
+            Message::Query(q) => match &q.method {
                 QueryMethod::Ping => write!(f, "{orig} pings {dest}"),
                 QueryMethod::FindNode(n) => write!(f, "{orig} asks {dest} where is {n}?"),
                 QueryMethod::GetPeers(i) => write!(f, "{orig} asks {dest} who has {i}"),
-                QueryMethod::AnnouncePeer(i) => write!(f, "{orig} tells {dest} that it owns {i}"),
+                QueryMethod::AnnouncePeer { info_hash, token, .. } =>
+                    write!(f, "{orig} tells {dest} that it owns {info_hash} with token {}", base64::encode(token)),
                 QueryMethod::Put(_) => write!(f, "{orig} stores data at {dest}"),
                 QueryMethod::Get => write!(f, "{orig} requests data from {dest}"),
             },
             Message::Response(r) => match &r.kind {
                 ResponseKind::Ok => write!(f, "{orig} tells {dest} Ok"),
-                ResponseKind::KNearest(k) => write!(f, "{orig} gives {dest} {} nodes", k.len()),
-                ResponseKind::Peers(p) => write!(f, "{orig} gives {dest} {} peers", p.len()),
+                ResponseKind::KNearest { nodes: k, token: t } => write!(
+                    f,
+                    "{orig} gives {dest} {} nodes{}",
+                    k.len(),
+                    t.as_ref().map_or("".into(), |t| format!(" and token {}", base64::encode(&t)))
+                ),
+                ResponseKind::Peers { peers: p, token: t } =>
+                    write!(f, "{orig} gives {dest} {} peers and token {}", p.len(), base64::encode(&t)),
                 ResponseKind::Data(_) => write!(f, "{orig} gives {dest} data"),
             },
             Message::Error(e) => write!(f, "{orig} tells {dest} {}", e),

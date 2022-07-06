@@ -20,7 +20,7 @@ pub struct MessageBase {
     pub origin:         Sender,
     pub destination:    Receiver,
     pub requestor_addr: Option<SocketAddr>,
-    pub transaction_id: u16,
+    pub transaction_id: u16, //todo expand, some clients want 6 bytes
     #[builder(default)]
     pub read_only:      bool,
     #[builder(default)]
@@ -51,7 +51,7 @@ pub enum QueryMethod {
     Ping,
     FindNode(U160),
     GetPeers(InfoHash),
-    AnnouncePeer(InfoHash), //add implied port
+    AnnouncePeer { info_hash: InfoHash, port: u16, token: Vec<u8> },
     Put(kmsg::MessageArgsBep44),
     Get,
 }
@@ -65,8 +65,8 @@ pub struct Response {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResponseKind {
     Ok,
-    KNearest(Vec<NodeInfo>),
-    Peers(Vec<SocketAddr>),
+    KNearest { nodes: Vec<NodeInfo>, token: Option<Vec<u8>> },
+    Peers { peers: Vec<SocketAddr>, token: Vec<u8> },
     Data(kmsg::response::KResponseBep44),
 }
 

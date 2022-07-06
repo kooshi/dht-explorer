@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let peer = require_with!(param!().peer.to_socket_addrs()?.next(), "invalid peer address");
     let addr = SocketAddr::from_str(&param!().bind_v4)?;
     let public_ip = try_with!(IpAddr::from_str(param!().public_ip.as_ref().unwrap()), "invalid public ip");
-    let node = Node::new(addr, false, public_ip).await?;
+    let node = Node::new(addr, false, public_ip, "./target/state/".into()).await?;
     node.bootstrap(peer).await?;
     time::sleep(Duration::from_millis(10000)).await;
     let found = node.find(U160::from_hex("B9FF4E7CE60DA918EB18D06AF1FDE0050D78E96E"), true).await;
