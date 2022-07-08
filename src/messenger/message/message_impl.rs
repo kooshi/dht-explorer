@@ -1,8 +1,9 @@
 use super::kmsg::socket_addr_wrapper::SocketAddrWrapper;
 use super::kmsg::*;
 use super::*;
+use log::error;
 use serde::Serialize;
-use simple_error::{bail, map_err_with, require_with, simple_error, try_with, SimpleResult};
+use simple_error::{bail, map_err_with, SimpleResult};
 use std::fmt::Display;
 
 impl Serialize for Message {
@@ -58,9 +59,13 @@ impl Message {
         }
     }
 
-    pub fn receive(bytes: &[u8], from: SocketAddr) -> SimpleResult<Self> {
-        let k: KMessage = try_with!(bt_bencode::from_slice(bytes), "error deserializing message");
-        Self::from_kmsg(from, k)
+    pub fn receive(bytes: &[u8], from: SocketAddr) -> Result<Self, (Option<KMessage>, KnownError)> {
+        let k: KMessage = bt_bencode::from_slice(bytes).map_err(|e| {
+            error!("error deserializing message: {e}");
+            (None, KnownError::Server)
+        })?;
+        let kclone = k.clone();
+        Self::from_kmsg(from, k).map_err(|e| (Some(kclone), e))
     }
 
     pub fn to_bytes(&self) -> SimpleResult<Vec<u8>> {
@@ -69,7 +74,7 @@ impl Message {
 
     pub fn to_kmsg(&self) -> KMessage {
         let builder = KMessage::builder()
-            .transaction_id(self.transaction_id.to_be_bytes().to_vec())
+            .transaction_id(self.transaction_id.clone())
             .requestor_ip(socket_addr_wrapper::SocketAddrWrapper {
                 socket_addr: match self {
                     Message::Query(_) => Some(self.origin.addr()),
@@ -125,40 +130,37 @@ impl Message {
                 builder.response(response).build()
             }
             Message::Error(e) =>
-                builder.message_type(kmsg::Y_ERROR).error(error::Error(e.code, e.description.clone())).build(),
+                builder.message_type(kmsg::Y_ERROR).error(error::Error(e.error.0, e.error.1.clone())).build(),
         }
     }
 
-    pub fn from_kmsg(origin_addr: SocketAddr, kmsg: KMessage) -> SimpleResult<Self> {
+    pub fn from_kmsg(origin_addr: SocketAddr, kmsg: KMessage) -> Result<Self, KnownError> {
         let mut base = MessageBase {
             origin:         Sender::Remote(NodeInfo { id: U160::empty(), addr: origin_addr }),
             destination:    Receiver::Me,
-            transaction_id: kmsg.transaction_id.as_chunks().0.iter().next().map_or(0, |c| u16::from_be_bytes(*c)),
+            transaction_id: kmsg.transaction_id,
             requestor_addr: if let Some(wrap) = kmsg.requestor_ip { wrap.socket_addr } else { None },
             read_only:      if let Some(ro) = kmsg.read_only { ro } else { false },
-            client:         kmsg
-                .version
-                .and_then(|v| v.try_into().ok())
-                .map_or_else(Client::default, Client::from_bytes),
+            client:         kmsg.version.and_then(|v| v.try_into().ok()).map(Client::from_bytes),
         };
 
         let message = match kmsg.message_type.as_str() {
             kmsg::Y_ERROR => {
-                let err = kmsg.error.ok_or_else(|| simple_error!("stated error type but no error data"))?;
-                Message::Error(Error { code: err.0, description: err.1, base })
+                let error = kmsg.error.ok_or(KnownError::Protocol)?;
+                Message::Error(Error { error, base })
             }
             kmsg::Y_QUERY => {
-                let err = simple_error!("stated query type but no query data");
+                let err = KnownError::Protocol;
                 if let Some(args) = kmsg.arguments {
                     base.origin = Sender::Remote(NodeInfo { id: args.id, addr: origin_addr });
                     Message::Query(Query {
                         base,
-                        method: match kmsg.query_method.ok_or_else(|| err.clone())?.as_str() {
+                        method: match kmsg.query_method.ok_or(err)?.as_str() {
                             kmsg::Q_PING => QueryMethod::Ping,
                             kmsg::Q_FIND_NODE => QueryMethod::FindNode(args.target.ok_or(err)?),
                             kmsg::Q_ANNOUNCE_PEER => QueryMethod::AnnouncePeer {
                                 info_hash: args.info_hash.ok_or(err)?,
-                                token:     require_with!(args.token, "announce with no token"),
+                                token:     args.token.ok_or(err)?,
                                 port:      if args.implied_port.unwrap_or(false) || args.port.is_none() {
                                     origin_addr.port()
                                 } else {
@@ -168,7 +170,10 @@ impl Message {
                             kmsg::Q_GET_PEERS => QueryMethod::GetPeers(args.info_hash.ok_or(err)?),
                             kmsg::Q_PUT => QueryMethod::Put(args.bep44),
                             kmsg::Q_GET => QueryMethod::Get,
-                            _ => bail!("unknown query type"),
+                            m => {
+                                error!("Got unknown method {m}");
+                                return Err(crate::messenger::message::KnownError::MethodUnknown);
+                            }
                         },
                     })
                 } else {
@@ -176,7 +181,7 @@ impl Message {
                 }
             }
             kmsg::Y_RESPONSE => {
-                let err = simple_error!("stated response type but no response data");
+                let err = KnownError::Protocol;
                 if let Some(response) = kmsg.response {
                     base.origin = Sender::Remote(NodeInfo { id: response.id, addr: origin_addr });
                     Message::Response(Response {
@@ -186,7 +191,7 @@ impl Message {
                         } else if let Some(peers) = response.values {
                             ResponseKind::Peers {
                                 peers: peers.iter().filter_map(|p| p.socket_addr).collect(),
-                                token: require_with!(response.token, "returned peers with no token"),
+                                token: response.token.ok_or(err)?,
                             }
                         } else if response.bep44.v.is_some() {
                             ResponseKind::Data(response.bep44)
@@ -198,7 +203,7 @@ impl Message {
                     bail!(err)
                 }
             }
-            _ => bail!("Unknown Message Type"),
+            _ => return Err(KnownError::Protocol),
         };
         Ok(message)
     }
@@ -226,8 +231,11 @@ impl Display for Sender {
 impl Display for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let dest = &self.destination;
-        let orig = self.origin;
-        write!(f, "[T:{}]", self.transaction_id)?;
+        let orig = match &self.origin {
+            Sender::Remote(n) => format!("{n}{}", self.client.as_ref().map_or("".to_owned(), |c| format!("{c}"))),
+            Sender::Me(_) => format!("{}", &self.origin),
+        };
+        write!(f, "[T:{}]", hex::encode(&self.transaction_id))?;
         match self {
             Message::Query(q) => match &q.method {
                 QueryMethod::Ping => write!(f, "{orig} pings {dest}"),
@@ -257,11 +265,11 @@ impl Display for Message {
 
 impl MessageBase {
     pub fn into_error_generic(self, description: &str) -> Error {
-        Error { code: KnownError::Generic as u16, description: description.to_owned(), base: self }
+        Error { error: kmsg::error::Error(KnownError::Generic as u16, description.to_owned()), base: self }
     }
 
     pub fn into_error(self, kind: KnownError) -> Error {
-        Error { code: kind as u16, description: kind.description().to_owned(), base: self }
+        Error { error: kmsg::error::Error(kind as u16, kind.description().to_owned()), base: self }
     }
 
     pub fn into_query(self, method: QueryMethod) -> Query {
@@ -286,7 +294,7 @@ mod test {
         let dest = Receiver::Addr(addr);
         let msg = MessageBase::builder()
             .origin(me)
-            .transaction_id(654)
+            .transaction_id(b"654".to_vec())
             .requestor_addr(Some(me.addr()))
             .read_only(true)
             .destination(dest)

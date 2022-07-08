@@ -1,4 +1,4 @@
-use self::message::{Message, Query, QueryResult};
+use self::message::{KnownError, Message, Query, QueryResult};
 use crate::utils::{self, LogErrExt};
 use async_trait::async_trait;
 use futures::future::{FutureExt, RemoteHandle};
@@ -58,5 +58,5 @@ pub type WrappedQueryHandler = Arc<dyn QueryHandler + Send + Sync>;
 #[async_trait]
 pub trait QueryHandler {
     async fn handle_query(&self, query: Query) -> QueryResult;
-    async fn handle_error(&self, tid: u16, source_addr: SocketAddr) -> message::Error;
+    async fn handle_error(&self, tid: Vec<u8>, source_addr: SocketAddr, error: KnownError) -> message::Error;
 }

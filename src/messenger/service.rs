@@ -37,21 +37,22 @@ impl Service {
                     let slice = &buffer[..n];
                     trace!("[P:{packet}] <<<<< {}", utils::safe_string_from_slice(slice));
                     debug!("[P:{packet}] <<<<< {}", base64::encode(slice));
-                    let result = Message::receive(slice, from);
-                    if let Ok(message) = result {
-                        tokio::spawn(self.clone().handle_received(packet, message));
-                    } else {
-                        error!("[P:{packet}] Deserializing Message: {result:?} (CULPRIT: {})", base64::encode(slice));
-                        if slice.windows(6).any(|w| w == b"1:y1:q") {
-                            //probably a failed query, we can send error
-                            let tid = slice
-                                .windows(7)
-                                .find(|w| w.starts_with(b"1:t2:"))
-                                .map_or(0, |s| u16::from_be_bytes([s[5], s[6]]));
+                    match Message::receive(slice, from) {
+                        Ok(message) => {
+                            tokio::spawn(self.clone().handle_received(packet, message));
+                        }
+                        Err((Some(raw), err)) => {
+                            error!("[P:{packet}] Deserializing Message: {err:?} (CULPRIT: {})", base64::encode(slice));
                             if let Some(handler) = &self.state.queries_inbound {
-                                self.send_message(&handler.handle_error(tid, from).await.into_message()).await.log();
+                                self.send_message(
+                                    &handler.handle_error(raw.transaction_id, from, err).await.into_message(),
+                                )
+                                .await
+                                .log();
                             }
                         }
+                        Err((None, err)) =>
+                            error!("[P:{packet}] Deserializing Message: {err:?} (CULPRIT: {})", base64::encode(slice)),
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
@@ -66,7 +67,7 @@ impl Service {
         debug!("[P:{packet}] <<<<< {message:?}");
         info!("[P:{packet}]{message}");
 
-        let id = message.transaction_id;
+        let my_tid = message.transaction_id.as_chunks().0.iter().next().map_or(0, |c| u16::from_be_bytes(*c));
         match message {
             Message::Query(q) =>
                 if let Some(handler) = &self.state.queries_inbound {
@@ -74,8 +75,8 @@ impl Service {
                 } else {
                     warn!("Query received by read only service. Dropped.");
                 },
-            Message::Response(r) => self.return_result(id, Ok(r)).await,
-            Message::Error(e) => self.return_result(id, Err(e)).await,
+            Message::Response(r) => self.return_result(my_tid, Ok(r)).await,
+            Message::Error(e) => self.return_result(my_tid, Err(e)).await,
         }
     }
 
@@ -93,17 +94,17 @@ impl Service {
         if cfg!(debug_assertions) && !cfg!(test) {
             time::sleep(Duration::from_millis(1000)).await;
         }
-
+        let my_tid = query.transaction_id.as_chunks().0.iter().next().map_or(0, |c| u16::from_be_bytes(*c));
         let (return_tx, return_rx) = oneshot::channel();
         {
             let mut queue = self.state.queries_outbound.lock().await;
             queue.push(OutstandingQuery {
-                transaction_id:   query.transaction_id,
+                transaction_id:   my_tid,
                 destination_addr: query.origin.addr(),
                 return_value:     return_tx,
             });
         }
-        trace!("Query [T:{}] added to outstanding", query.transaction_id);
+        trace!("Query [T:{}] added to outstanding", my_tid);
         let message = query.clone().into_message();
         self.send_message(&message).await.map_err(|e| message.base().clone().into_error_generic(&e.to_string()))?;
 
@@ -113,8 +114,8 @@ impl Service {
                 m.map_or_else(
                 |e|Result::Err(message.base().clone().into_error_generic(&e.to_string())),|r|r) }
             _ = sleep => {
-                self.remove_from_queue(message.transaction_id, message.origin.addr()).await;
-                warn!("Query [T:{}] timed out", message.transaction_id);
+                self.remove_from_queue(my_tid, message.origin.addr()).await;
+                warn!("Query [T:{}] timed out", my_tid);
                 Result::Err(message.base().clone().into_error_generic("Timeout"))
             }
         }

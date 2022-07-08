@@ -97,8 +97,15 @@ impl Node {
                         if found.id == target {
                             return Found::Target(found);
                         }
-                        if seen.insert(Close(target.distance(found.id), found))
-                            && seen.iter().position(|c| c.1.id == found.id).unwrap() < (crate::K_SIZE as usize * 2)
+                        if //closer to target than the kth * 2 seen
+                            seen 
+                            .iter()
+                            .nth((crate::K_SIZE * 2).into()) 
+                            .map_or(true, |&Close(d, _)| target.distance(found.id) < d)
+                            //we haven't seen it yet
+                            && seen.insert(Close(target.distance(found.id), found)) 
+                            //is valid
+                            && found.validate() 
                         {
                             let selfclone = self.clone();
                             tasks.add_task(async move { selfclone.send_find(found, target, find_peers).await })
@@ -149,7 +156,7 @@ impl Node {
 
     fn build_query(&self, to: Receiver, method: QueryMethod) -> Query {
         MessageBase::builder()
-            .transaction_id(self.server.transaction.fetch_add(1, Ordering::Relaxed) as u16)
+            .transaction_id((self.server.transaction.fetch_add(1, Ordering::Relaxed) as u16).to_be_bytes().to_vec())
             .destination(to)
             .origin(Sender::Me(self.server.me))
             .read_only(self.server.read_only)
@@ -173,10 +180,10 @@ pub enum Found {
 }
 
 impl Server {
-    fn response_base(&self, tid: u16, to: Receiver) -> MessageBase {
+    fn response_base(&self, tid: &[u8], to: Receiver) -> MessageBase {
         MessageBase::builder()
             .origin(Sender::Me(self.me))
-            .transaction_id(tid)
+            .transaction_id(tid.to_owned())
             .destination(to)
             .requestor_addr(to.into())
             .build()
@@ -235,7 +242,7 @@ impl Server {
 impl QueryHandler for Server {
     async fn handle_query(&self, query: Query) -> QueryResult {
         assert!(!self.read_only);
-        let response_base = self.response_base(query.transaction_id, query.origin.into());
+        let response_base = self.response_base(&query.transaction_id, query.origin.into());
         if query.origin.id() == self.me.id {
             return Err(response_base.into_error_generic("Echo!"));
         }
@@ -255,7 +262,7 @@ impl QueryHandler for Server {
         }
     }
 
-    async fn handle_error(&self, tid: u16, source_addr: SocketAddr) -> message::Error {
-        self.response_base(tid, Receiver::Addr(source_addr)).into_error(message::KnownError::Server)
+    async fn handle_error(&self, tid: Vec<u8>, source_addr: SocketAddr, error:KnownError) -> message::Error {
+        self.response_base(&tid, Receiver::Addr(source_addr)).into_error(error)
     }
 }

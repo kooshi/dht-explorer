@@ -1,6 +1,8 @@
 use crate::u160::U160;
 use serde::{Deserialize, Deserializer, Serialize};
-use std::{fmt::{Debug, Display}, hash::Hash, net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}};
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 pub const IPV4_DHT_NODE_BYTES_LEN: usize = 26;
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct NodeInfo {
@@ -49,12 +51,12 @@ impl NodeInfo {
 
 impl Display for NodeInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}-{}]", self.id, self.addr)
+        write!(f, "[{}@{}]", self.id, self.addr)
     }
 }
 impl Debug for NodeInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}-{}]", self.id, self.addr)
+        write!(f, "[{}@{}]", self.id, self.addr)
     }
 }
 
@@ -113,7 +115,8 @@ impl<'de> Deserialize<'de> for NodeInfo {
 mod tests {
     use super::*;
     use crate::utils;
-    use std::{net::SocketAddr, str::FromStr};
+    use std::net::SocketAddr;
+    use std::str::FromStr;
     #[test]
     fn new() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();

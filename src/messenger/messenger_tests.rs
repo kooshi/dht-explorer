@@ -20,10 +20,10 @@ async fn ping() {
     let querybase = MessageBase {
         origin:         Sender::Me(client_node),
         destination:    Receiver::Node(server_node),
-        transaction_id: 123,
+        transaction_id: b"123".to_vec(),
         requestor_addr: Some(client_node.addr),
         read_only:      true,
-        client:         Client::default(),
+        client:         None,
     };
     let response = client.query(&querybase.into_query(QueryMethod::Ping)).await;
     assert!(response.is_ok());
@@ -44,24 +44,24 @@ impl QueryHandler for TestHandler {
         let returnbase = MessageBase {
             origin:         Sender::Me(self.info),
             destination:    query.origin.into(),
-            transaction_id: query.transaction_id,
+            transaction_id: query.transaction_id.clone(),
             requestor_addr: Some(query.origin.addr()),
             read_only:      false,
-            client:         Client::default(),
+            client:         None,
         };
         Ok(returnbase.into_response(ResponseKind::Ok))
     }
 
-    async fn handle_error(&self, tid: u16, to: SocketAddr) -> message::Error {
+    async fn handle_error(&self, tid: Vec<u8>, to: SocketAddr, error: KnownError) -> message::Error {
         let returnbase = MessageBase {
             origin:         Sender::Me(self.info),
             destination:    Receiver::Addr(to),
             transaction_id: tid,
             requestor_addr: Some(to),
             read_only:      false,
-            client:         Client::default(),
+            client:         None,
         };
-        returnbase.into_error(KnownError::Server)
+        returnbase.into_error(error)
     }
 }
 
@@ -80,13 +80,13 @@ async fn timeout_readonly() {
     let querybase = MessageBase {
         origin:         Sender::Me(client_node),
         destination:    Receiver::Node(server_node),
-        transaction_id: 321,
+        transaction_id: b"321".to_vec(),
         requestor_addr: Some(client_node.addr),
         read_only:      true,
-        client:         Client::default(),
+        client:         None,
     };
     let response = client.query(&querybase.into_query(QueryMethod::Ping)).await;
-    assert!(if let Err(message::Error { code, description, .. }) = &response {
+    assert!(if let Err(message::Error { error: kmsg::error::Error(code, description), .. }) = &response {
         *code == 201 && description == "Timeout"
     } else {
         false

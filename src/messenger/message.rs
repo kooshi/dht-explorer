@@ -20,11 +20,11 @@ pub struct MessageBase {
     pub origin:         Sender,
     pub destination:    Receiver,
     pub requestor_addr: Option<SocketAddr>,
-    pub transaction_id: u16, //todo expand, some clients want 6 bytes
+    pub transaction_id: Vec<u8>,
     #[builder(default)]
     pub read_only:      bool,
     #[builder(default)]
-    pub client:         Client,
+    pub client:         Option<Client>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
@@ -72,9 +72,8 @@ pub enum ResponseKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
-    pub code:        u16,
-    pub description: String,
-    base:            MessageBase,
+    pub error: kmsg::error::Error,
+    base:      MessageBase,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -113,7 +112,7 @@ impl KnownError {
 impl std::error::Error for Error {}
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, r#"({}) "{}""#, self.code, self.description)
+        write!(f, r#"({}) "{}""#, self.error.0, self.error.1)
     }
 }
 
@@ -287,8 +286,9 @@ impl Client {
         }
     }
 }
-impl Default for Client {
-    fn default() -> Self {
-        Client { name: "Unknown", code: ['U', 'U'], version: 0 }
+impl Display for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let disp = if self.name == "Unknown" { String::from_iter(self.code.iter()) } else { self.name.to_owned() };
+        write!(f, "({disp})")
     }
 }
