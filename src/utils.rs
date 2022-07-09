@@ -1,7 +1,8 @@
-use futures::{future::{select_all, RemoteHandle}, Future, FutureExt};
+use futures::future::{select_all, RemoteHandle};
+use futures::{Future, FutureExt};
 use log::error;
 use regex::Regex;
-use simple_error::SimpleResult;
+use simple_error::{simple_error, SimpleResult};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 pub fn safe_string_from_slice(bytes: &[u8]) -> String {
@@ -9,18 +10,36 @@ pub fn safe_string_from_slice(bytes: &[u8]) -> String {
     r.replace_all(&bytes.escape_ascii().to_string(), "·").to_string()
 }
 
-pub trait LogErrExt {
+pub trait LogErrExt<T> {
     fn log(self);
     fn log_with(self, s: &str);
+    fn ok_or_log(self) -> Option<T>;
+    fn ok_or_log_with(self, s: &str) -> Option<T>;
 }
 
-impl<T> LogErrExt for SimpleResult<T> {
+impl<T, E> LogErrExt<T> for Result<T, E>
+where E: std::error::Error
+{
     fn log(self) {
         self.log_with("");
     }
 
     fn log_with(self, s: &str) {
         self.err().iter().for_each(|e| error!("{} {:?}", s, e))
+    }
+
+    fn ok_or_log(self) -> Option<T> {
+        self.ok_or_log_with("")
+    }
+
+    fn ok_or_log_with(self, s: &str) -> Option<T> {
+        self.map_or_else(
+            |e| {
+                error!("{s} {e:?}");
+                None
+            },
+            |t| Some(t),
+        )
     }
 }
 
@@ -100,3 +119,40 @@ where
 //         })
 //     };
 // }
+
+pub trait MySliceExt<T, const N: usize> {
+    fn to_sized(&self) -> SimpleResult<[T; N]>;
+    fn to_sized_or_fill(&self, fill: T) -> [T; N];
+    fn to_sized_or_else_fill<F: Fn() -> T>(&self, fill: F) -> [T; N];
+}
+impl<T, const N: usize> MySliceExt<T, N> for [T]
+where T: Copy + Default
+{
+    fn to_sized(&self) -> SimpleResult<[T; N]> {
+        let mut result = [T::default(); N];
+        if self.len() == N {
+            result.copy_from_slice(self);
+            Ok(result)
+        } else {
+            Err(simple_error!("invalid slice length"))
+        }
+    }
+
+    fn to_sized_or_fill(&self, fill: T) -> [T; N] {
+        let mut result = [fill; N];
+        if self.len() == N {
+            result.copy_from_slice(self);
+        }
+        result
+    }
+
+    fn to_sized_or_else_fill<F: Fn() -> T>(&self, fill: F) -> [T; N] {
+        let mut result = [T::default(); N];
+        if self.len() == N {
+            result.copy_from_slice(self);
+        } else {
+            result.fill_with(fill);
+        }
+        result
+    }
+}

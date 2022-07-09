@@ -2,6 +2,7 @@ mod parameters;
 
 use dht_explorer::node::Node;
 use dht_explorer::u160::U160;
+use dht_explorer::utils::LogErrExt;
 use fern::Dispatch;
 use log::info;
 use parameters::Parameters;
@@ -10,9 +11,10 @@ use std::error::Error;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::OnceCell;
-use tokio::time;
 use tokio::time::Duration;
+use tokio::{join, time};
 
 static PARAMS: OnceCell<Parameters> = OnceCell::const_new();
 #[macro_export]
@@ -48,7 +50,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     time::sleep(Duration::from_millis(10000)).await;
     let found = node.find(U160::from_hex("B9FF4E7CE60DA918EB18D06AF1FDE0050D78E96E"), true).await;
     info!("Found! {found:?}");
-    tokio::signal::ctrl_c().await?;
+    tokio::signal::ctrl_c().await.unwrap();
+
+    // let (tx, mut rx) = tokio::sync::mpsc::channel::<U160>(100);
+    // let handle = tokio::spawn(async move {
+    //     let mut file =
+    //         tokio::fs::OpenOptions::new().write(true).create(true).open("./target/state/infohashes.txt").await.unwrap();
+    //     while let Some(hash) = rx.recv().await {
+    //         file.write_all(format!("{}\n", hash.to_hex()).as_bytes()).await.log();
+    //     }
+    // });
+    // node.infohash_sweep(tx).await;
+    // join!(handle).0.log();
+
     Ok(())
 }
 

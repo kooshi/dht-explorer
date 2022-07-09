@@ -1,3 +1,4 @@
+use super::wrappers::CompactInfoHashes;
 use super::*;
 use serde_derive::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
@@ -30,6 +31,11 @@ pub struct KResponse {
     #[serde(default)]
     #[builder(default)]
     pub bep44: KResponseBep44,
+
+    #[serde(flatten)]
+    #[serde(default)]
+    #[builder(default)]
+    pub bep51: ResponseBep51,
 }
 
 #[derive(TypedBuilder, Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -62,9 +68,25 @@ pub struct KResponseBep44 {
     pub sig: Option<Vec<u8>>,
 }
 
+#[derive(TypedBuilder, Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ResponseBep51 {
-    //TODO https://github.com/anacrolix/dht/blob/master/krpc/msg.go
-    //     https://www.bittorrent.org/beps/bep_0051.html
+    // the time in seconds that the samples are rotated
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub interval: Option<u16>,
+
+    // A list of infohashes for which we have stored peers, limited by UDP packet length
+    // Nodes supporting this extension should always include the samples field in the response, even
+    // when it is zero-length. This lets indexing nodes to distinguish nodes supporting this
+    // extension from those that respond to unknown query types which contain a target field [2].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub samples: Option<CompactInfoHashes>,
+
+    // total number of known infohashes in storage
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub num: Option<u64>,
 }
 
 pub struct ResponseBep33 {

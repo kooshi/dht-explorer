@@ -1,15 +1,16 @@
-use crate::messenger::message::kmsg::socket_addr_wrapper::SocketAddrWrapper;
+use crate::messenger::message::kmsg::wrappers::SocketAddrWrapper;
 use crate::messenger::message::{self, KnownError, MessageBase, Query, QueryResult, Receiver, ResponseKind, Sender};
 use crate::messenger::{self, Messenger, QueryHandler, WrappedQueryHandler};
 use crate::node_info::NodeInfo;
 use crate::router::Router;
 use crate::u160::U160;
-use crate::utils::UnboundedConcurrentTaskSet;
+use crate::utils::{UnboundedConcurrentTaskSet, MySliceExt, LogErrExt};
 mod token;
 use self::token::TokenGenerator;
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use messenger::message::QueryMethod;
+use rand::prelude::IteratorRandom;
 use simple_error::{try_with, SimpleResult};
 use sled::{self, Db};
 use std::collections::{BTreeSet, HashSet};
@@ -17,6 +18,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use rand::SeedableRng;
+use rand::rngs::SmallRng;
 
 const PEER_TREE: &str = "peers";
 
@@ -164,6 +167,52 @@ impl Node {
             .build()
             .into_query(method)
     }
+
+    pub async fn infohash_sweep(&self, tx:tokio::sync::mpsc::Sender<U160>) {
+        let next_highest = U160::from_hex("000007ffffffffffffffffffffffffffffffffff");
+        let next_lowest = !next_highest;//todo implement going down from self later
+        let mut seen = BTreeSet::<U160>::new();
+        let init = self.server.router.lookup(self.server.me.id).await;
+        let mut tasks = UnboundedConcurrentTaskSet::new();
+        for n in init {
+            let me = self.clone();
+            tasks.add_task(async move { me.messenger.query(&me.build_query(n.into(), QueryMethod::SampleInfohashes(n.id | next_highest))).await });
+        }
+        while let Some(result) = tasks.get_next_result().await {
+            if seen.len() > 100 {
+                let middle = seen.iter().nth(seen.len()/2).unwrap().to_owned();
+                seen = seen.split_off(&middle);
+            }
+            match result {
+                Ok(r) => match r.kind {
+                    ResponseKind::KNearest { nodes , ..} => {
+                    for n in nodes {
+                        if seen.insert(n.id) {
+                            let me = self.clone();
+                            tasks.add_task(async move { me.messenger.query(&me.build_query(n.into(), QueryMethod::SampleInfohashes(n.id | next_highest))).await});
+                        }
+                    }},
+                    ResponseKind::Samples { nodes, samples, .. } => {
+                        for s in samples {
+                            tx.send(s).await.log();
+                        }
+                        for n in nodes {
+                            if seen.insert(n.id) {
+                                let me = self.clone();
+                                tasks.add_task(async move { me.messenger.query(&me.build_query(n.into(), QueryMethod::SampleInfohashes(n.id | next_highest))).await});
+                            }
+                        }
+                    },
+                    _ => warn!("unexpected sample response {r:?}")
+                },
+                Err(e) => {
+                    if e.error.0 == message::KnownError::MethodUnknown as u16 {
+                        warn!("maybe try a knearest instead")
+                    }
+                },
+            }
+        }
+    }
 }
 
 enum OneResult {
@@ -236,6 +285,25 @@ impl Server {
             }))
         }
     }
+
+    async fn handle_sample(&self, response_base: MessageBase, target: U160) -> QueryResult {
+        let err = response_base.clone().into_error(KnownError::Server);
+        let max_samples = (u16::MAX as usize / 20) - 10;
+        let peers = self.db.open_tree(PEER_TREE).map_err(|_| err)?;
+        let available = peers.len() as u64;
+        let mut rng = SmallRng::from_entropy();
+        let samples = peers
+            .iter().keys()
+            .filter_map(|k|Some(U160::from_be_bytes(&k.ok_or_log()?.to_sized().ok_or_log()?)))
+            .choose_multiple(&mut rng, max_samples);
+
+        Ok(response_base.into_response(ResponseKind::Samples { 
+            nodes: self.router.lookup(target).await, 
+            samples, 
+            available, 
+            interval: 0 
+        }))
+    }
 }
 
 #[async_trait]
@@ -259,6 +327,7 @@ impl QueryHandler for Server {
                 self.handle_announce(response_base, query.origin.into(), *info_hash, *port, token),
             QueryMethod::Put(_) => Err(response_base.into_error(KnownError::MethodUnknown)),
             QueryMethod::Get => Err(response_base.into_error(KnownError::MethodUnknown)),
+            QueryMethod::SampleInfohashes(target) => self.handle_sample(response_base, *target).await
         }
     }
 

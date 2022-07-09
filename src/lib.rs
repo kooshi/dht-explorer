@@ -9,7 +9,7 @@ pub mod node;
 mod node_info;
 mod router;
 pub mod u160;
-mod utils;
+pub mod utils;
 
 const MAX_CONCURRENCY: u8 = 8;
 const K_SIZE: u8 = 8;

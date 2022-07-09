@@ -52,6 +52,10 @@ impl U160 {
         self ^ other
     }
 
+    pub fn to_hex(&self) -> String {
+        hex::encode(self.to_be_bytes())
+    }
+
     pub fn from_hex(hex: &str) -> Self {
         let mut bytes = [0_u8; 20];
         hex::decode_to_slice(hex, &mut bytes).expect("error getting id from hex");
@@ -237,7 +241,7 @@ mod tests {
         let dis = U160::from_hex("0000000000000000000000000000000000000010");
         assert_eq!(dis, id1 ^ id2);
 
-        let id1_copy = U160::from_hex(&id1.to_string());
+        let id1_copy = U160::from_hex(&id1.to_hex());
         assert_eq!(id1, id1_copy);
     }
 

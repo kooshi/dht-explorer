@@ -1,6 +1,6 @@
 pub(crate) mod kmsg;
 mod message_impl;
-use self::kmsg::nodes::CompactIPv4NodeInfo;
+use self::kmsg::wrappers::CompactIPv4NodeInfo;
 use crate::node_info::NodeInfo;
 use crate::u160::U160;
 use std::fmt::Display;
@@ -54,6 +54,7 @@ pub enum QueryMethod {
     AnnouncePeer { info_hash: InfoHash, port: u16, token: Vec<u8> },
     Put(kmsg::MessageArgsBep44),
     Get,
+    SampleInfohashes(U160),
 }
 
 pub type QueryResult = Result<Response, Error>;
@@ -67,7 +68,8 @@ pub enum ResponseKind {
     Ok,
     KNearest { nodes: Vec<NodeInfo>, token: Option<Vec<u8>> },
     Peers { peers: Vec<SocketAddr>, token: Vec<u8> },
-    Data(kmsg::response::KResponseBep44),
+    Data(kmsg::kresponse::KResponseBep44),
+    Samples { nodes: Vec<NodeInfo>, samples: Vec<U160>, available: u64, interval: u16 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

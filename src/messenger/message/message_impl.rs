@@ -1,4 +1,4 @@
-use super::kmsg::socket_addr_wrapper::SocketAddrWrapper;
+use super::kmsg::wrappers::{CompactInfoHashes, SocketAddrWrapper};
 use super::kmsg::*;
 use super::*;
 use log::error;
@@ -75,7 +75,7 @@ impl Message {
     pub fn to_kmsg(&self) -> KMessage {
         let builder = KMessage::builder()
             .transaction_id(self.transaction_id.clone())
-            .requestor_ip(socket_addr_wrapper::SocketAddrWrapper {
+            .requestor_ip(SocketAddrWrapper {
                 socket_addr: match self {
                     Message::Query(_) => Some(self.origin.addr()),
                     Message::Response(_) => self.requestor_addr,
@@ -108,12 +108,16 @@ impl Message {
                         builder.query_method(Q_PUT)
                     }
                     QueryMethod::Get => builder.query_method(Q_GET),
+                    QueryMethod::SampleInfohashes(target) => {
+                        args.target = Some(*target);
+                        builder.query_method(Q_SAMPLE_INFOHASHES)
+                    }
                 };
                 builder.arguments(args).build()
             }
             Message::Response(r) => {
                 let builder = builder.message_type(kmsg::Y_RESPONSE);
-                let mut response = response::KResponse::builder().id(self.origin.id()).build();
+                let mut response = kresponse::KResponse::builder().id(self.origin.id()).build();
                 match &r.kind {
                     ResponseKind::Ok => (),
                     ResponseKind::KNearest { nodes, token } => {
@@ -126,6 +130,12 @@ impl Message {
                         response.token = Some(token.clone());
                     }
                     ResponseKind::Data(base) => response.bep44 = base.clone(),
+                    ResponseKind::Samples { nodes, samples, available, interval } => {
+                        response.nodes = Some(CompactIPv4NodeInfo { dht_nodes: nodes.clone() });
+                        response.bep51.samples = Some(CompactInfoHashes { info_hashes: samples.to_vec() });
+                        response.bep51.num = Some(*available);
+                        response.bep51.interval = Some(*interval);
+                    }
                 };
                 builder.response(response).build()
             }
@@ -170,6 +180,7 @@ impl Message {
                             kmsg::Q_GET_PEERS => QueryMethod::GetPeers(args.info_hash.ok_or(err)?),
                             kmsg::Q_PUT => QueryMethod::Put(args.bep44),
                             kmsg::Q_GET => QueryMethod::Get,
+                            kmsg::Q_SAMPLE_INFOHASHES => QueryMethod::SampleInfohashes(args.target.ok_or(err)?),
                             m => {
                                 error!("Got unknown method {m}");
                                 return Err(crate::messenger::message::KnownError::MethodUnknown);
@@ -195,6 +206,13 @@ impl Message {
                             }
                         } else if response.bep44.v.is_some() {
                             ResponseKind::Data(response.bep44)
+                        } else if let Some(CompactInfoHashes { info_hashes }) = response.bep51.samples {
+                            ResponseKind::Samples {
+                                nodes:     response.nodes.ok_or(err)?.dht_nodes,
+                                samples:   info_hashes,
+                                available: response.bep51.num.unwrap_or_default(),
+                                interval:  response.bep51.interval.unwrap_or_default(),
+                            }
                         } else {
                             ResponseKind::Ok
                         },
@@ -230,35 +248,42 @@ impl Display for Sender {
 
 impl Display for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let dest = &self.destination;
-        let orig = match &self.origin {
-            Sender::Remote(n) => format!("{n}{}", self.client.as_ref().map_or("".to_owned(), |c| format!("{c}"))),
-            Sender::Me(_) => format!("{}", &self.origin),
+        let remote = match &self.origin {
+            Sender::Remote(n) => format!(" FROM {n}{}", self.client.as_ref().map_or("".to_owned(), |c| format!("{c}"))),
+            Sender::Me(_) => format!(" TO   {}", &self.destination),
         };
-        write!(f, "[T:{}]", hex::encode(&self.transaction_id))?;
+        write!(f, "[T:{}]{remote} ", hex::encode(&self.transaction_id))?;
         match self {
             Message::Query(q) => match &q.method {
-                QueryMethod::Ping => write!(f, "{orig} pings {dest}"),
-                QueryMethod::FindNode(n) => write!(f, "{orig} asks {dest} where is {n}?"),
-                QueryMethod::GetPeers(i) => write!(f, "{orig} asks {dest} who has {i}"),
+                QueryMethod::Ping => write!(f, "PING"),
+                QueryMethod::FindNode(n) => write!(f, "FIND {n}"),
+                QueryMethod::GetPeers(i) => write!(f, "GET PEERS {i}"),
                 QueryMethod::AnnouncePeer { info_hash, token, .. } =>
-                    write!(f, "{orig} tells {dest} that it owns {info_hash} with token {}", base64::encode(token)),
-                QueryMethod::Put(_) => write!(f, "{orig} stores data at {dest}"),
-                QueryMethod::Get => write!(f, "{orig} requests data from {dest}"),
+                    write!(f, "ANNOUNCES {info_hash} with token {}", base64::encode(token)),
+                QueryMethod::Put(_) => write!(f, "PUTs data"),
+                QueryMethod::Get => write!(f, "GETs data"),
+                QueryMethod::SampleInfohashes(_) => write!(f, "GET SAMPLES"),
             },
             Message::Response(r) => match &r.kind {
-                ResponseKind::Ok => write!(f, "{orig} tells {dest} Ok"),
+                ResponseKind::Ok => write!(f, "OK"),
                 ResponseKind::KNearest { nodes: k, token: t } => write!(
                     f,
-                    "{orig} gives {dest} {} nodes{}",
+                    "NEAREST {} nodes{}",
                     k.len(),
                     t.as_ref().map_or("".into(), |t| format!(" and token {}", base64::encode(&t)))
                 ),
                 ResponseKind::Peers { peers: p, token: t } =>
-                    write!(f, "{orig} gives {dest} {} peers and token {}", p.len(), base64::encode(&t)),
-                ResponseKind::Data(_) => write!(f, "{orig} gives {dest} data"),
+                    write!(f, "{} PEERS and token {}", p.len(), base64::encode(&t)),
+                ResponseKind::Data(_) => write!(f, "some data"),
+                ResponseKind::Samples { samples, available, interval, .. } => write!(
+                    f,
+                    "{} of {} hashes (refresh in {})",
+                    samples.len(),
+                    available,
+                    chrono::Duration::seconds(*interval as i64)
+                ),
             },
-            Message::Error(e) => write!(f, "{orig} tells {dest} {}", e),
+            Message::Error(e) => write!(f, "{e}"),
         }
     }
 }

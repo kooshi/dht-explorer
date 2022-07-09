@@ -1,21 +1,19 @@
 use crate::node_info::{NodeInfo, IPV4_DHT_NODE_BYTES_LEN};
 use crate::u160::U160;
 use error::Error;
-use nodes::CompactIPv4NodeInfo;
-use response::KResponse;
+use kresponse::KResponse;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_derive::{Deserialize, Serialize};
-use socket_addr_wrapper::SocketAddrWrapper;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use typed_builder::TypedBuilder;
+use wrappers::{CompactIPv4NodeInfo, SocketAddrWrapper};
 
 pub(crate) mod error;
 #[cfg(test)]
 mod kmsg_tests;
-pub(crate) mod nodes;
-pub(crate) mod response;
+pub(crate) mod kresponse;
 pub(crate) mod serde_extra;
-pub(crate) mod socket_addr_wrapper;
+pub(crate) mod wrappers;
 
 pub const Q_ANNOUNCE_PEER: &str = "announce_peer";
 pub const Q_PING: &str = "ping";
@@ -24,6 +22,8 @@ pub const Q_GET_PEERS: &str = "get_peers";
 //BEP44
 pub const Q_PUT: &str = "put";
 pub const Q_GET: &str = "get";
+//BEP51
+pub const Q_SAMPLE_INFOHASHES: &str = "sample_infohashes";
 
 pub const Y_QUERY: &str = "q";
 pub const Y_RESPONSE: &str = "r";
