@@ -52,6 +52,14 @@ impl U160 {
         self ^ other
     }
 
+    pub fn ms_u128(&self) -> u128 {
+        self.msbytes
+    }
+
+    pub fn ms_u64(&self) -> u64 {
+        (self.msbytes >> 64) as u64
+    }
+
     pub fn to_hex(&self) -> String {
         hex::encode(self.to_be_bytes())
     }

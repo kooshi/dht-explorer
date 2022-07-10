@@ -111,6 +111,25 @@ impl<'de> Deserialize<'de> for NodeInfo {
     }
 }
 
+impl PartialOrd for NodeInfo {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.id.partial_cmp(&other.id) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.addr.partial_cmp(&other.addr)
+    }
+}
+impl Ord for NodeInfo {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.id.cmp(&other.id) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        self.addr.cmp(&other.addr)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

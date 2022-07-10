@@ -188,70 +188,81 @@ impl Node {
     }
 
     pub async fn infohash_sweep(&self, tx: tokio::sync::mpsc::Sender<U160>) {
-        let next_highest = U160::from_hex("000007ffffffffffffffffffffffffffffffffff");
-        let init = self.find_n_nodes(U160::rand() & next_highest, 20).await;
         let mut tasks = UnboundedConcurrentTaskSet::new();
-        let mut sent_find = BTreeSet::<U160>::new();
-        for n in init {
-            sent_find.insert(n.id);
-            let me = self.clone();
-            tasks.add_task(async move {
-                me.messenger.query(&me.build_query(n.into(), QueryMethod::FindNode(n.id | next_highest))).await
-            });
+        let mut to_send = BTreeSet::<NodeInfo>::new();
+        for n in self.find_n_nodes(U160::empty(), 255).await {
+            to_send.insert(n);
         }
-        let mut sent_sample = BTreeSet::<U160>::new();
+        for n in self.find_n_nodes(!U160::empty(), 255).await {
+            to_send.insert(n);
+        }
+        let mut queried = BTreeSet::<U160>::new();
         fn prune(tree: &mut BTreeSet<U160>) {
+            //todo find a better way of tracking seen
+            //high risk of wrapping arround with this
             if tree.len() > 100000 {
                 tree.pop_first();
             }
         }
+
+        let me = self.clone();
+        let next_highest = U160::from_hex("000007ffffffffffffffffffffffffffffffffff");
+        let query_one = async move |n: NodeInfo| {
+            let samples =
+                me.messenger.query(&me.build_query(n.into(), QueryMethod::SampleInfohashes(n.id | next_highest))).await;
+            if samples.is_err() && samples.as_ref().unwrap_err().error.0 != 201 {
+                me.messenger.query(&me.build_query(n.into(), QueryMethod::FindNode(n.id | next_highest))).await
+            } else {
+                samples
+            }
+        };
+
+        macro_rules! query_next {
+            () => {
+                if let Some(n) = to_send.pop_first() {
+                    let keyspace_percent = ((n.id.ms_u64() as f64) * 100.0) / (u64::MAX as f64);
+                    info!("Traveled {keyspace_percent:.5}% of keyspace. {} known remaining", to_send.len());
+                    queried.insert(n.id);
+                    tasks.add_task(query_one.clone()(n));
+                }
+            };
+        }
+
         debug!("Beginning keyspace traversal");
-        while let Some(result) = tasks.get_next_result().await {
-            prune(&mut sent_find);
-            prune(&mut sent_sample);
-            match result {
-                Ok(r) => match &r.kind {
-                    ResponseKind::KNearest { nodes, .. } =>
-                        for n in nodes {
-                            if r.origin.id().distance(n.id) > U160::from_hex("000fffffffffffffffffffffffffffffffffffff")
-                            {
-                                warn!("Skipping node {} too far from origin {}", n.id, r.origin.id());
-                                continue;
+        loop {
+            if to_send.is_empty() {
+                break;
+            }
+            for _ in 0..8 {
+                query_next!()
+            }
+
+            while let Some(result) = tasks.get_next_result().await {
+                prune(&mut queried);
+                match result {
+                    Ok(r) => match r.kind {
+                        ResponseKind::KNearest { nodes, .. } => Some(nodes),
+                        ResponseKind::Samples { samples, nodes, .. } => {
+                            for s in samples {
+                                tx.send(s).await.log();
                             }
-                            if sent_sample.insert(n.id) {
-                                let me = self.clone();
-                                let n = *n;
-                                tasks.add_task(async move {
-                                    me.messenger
-                                        .query(
-                                            &me.build_query(
-                                                n.into(),
-                                                QueryMethod::SampleInfohashes(n.id | next_highest),
-                                            ),
-                                        )
-                                        .await
-                                });
-                            }
-                            if sent_find.insert(n.id) {
-                                let me = self.clone();
-                                let n = *n;
-                                tasks.add_task(async move {
-                                    me.messenger
-                                        .query(&me.build_query(n.into(), QueryMethod::FindNode(n.id | next_highest)))
-                                        .await
-                                });
-                            }
-                        },
-                    ResponseKind::Samples { samples, .. } =>
-                        for s in samples {
-                            tx.send(*s).await.log();
-                        },
-                    _ => warn!("unexpected sample response {r:?}"),
-                },
-                Err(e) =>
-                    if e.error.0 == message::KnownError::MethodUnknown as u16 {
-                        warn!("maybe try a knearest instead")
+                            Some(nodes)
+                        }
+                        _ => {
+                            warn!("unexpected sample response {r:?}");
+                            None
+                        }
                     },
+                    Err(_e) => None,
+                }
+                .iter()
+                .flatten()
+                .for_each(|n| {
+                    if queried.insert(n.id) {
+                        to_send.insert(*n);
+                    }
+                });
+                query_next!()
             }
         }
     }

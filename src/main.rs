@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let mut file =
             tokio::fs::OpenOptions::new().write(true).create(true).open("./target/state/infohashes.txt").await.unwrap();
         while let Some(hash) = rx.recv().await {
-            info!("GOT ONE {hash}");
+            //info!("GOT ONE {hash}");
             file.write_all(format!("{}\n", hash.to_hex()).as_bytes()).await.log();
         }
     });
