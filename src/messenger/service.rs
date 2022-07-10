@@ -18,9 +18,10 @@ pub struct Service {
 }
 
 pub struct OutstandingQuery {
-    transaction_id:   u16,
+    transaction_id:   Vec<u8>,
     destination_addr: SocketAddr,
     return_value:     oneshot::Sender<QueryResult>,
+    timestamp_millis: i64,
 }
 
 impl Service {
@@ -65,46 +66,60 @@ impl Service {
 
     async fn handle_received(self, packet: usize, message: Message) {
         debug!("[P:{packet}] <<<<< {message:?}");
-        info!("[P:{packet}]{message}");
-
-        let my_tid = message.transaction_id.as_chunks().0.iter().next().map_or(0, |c| u16::from_be_bytes(*c));
         match message {
             Message::Query(q) =>
                 if let Some(handler) = &self.state.queries_inbound {
+                    info!("[P:{packet}][T:{} Q<<<<]{q}", hex::encode(&q.base().transaction_id));
                     self.send_message(&handler.handle_query(q).await.into()).await.log()
                 } else {
-                    warn!("Query received by read only service. Dropped.");
+                    warn!(
+                        "[P:{packet}][T:{} DROPD] READ ONLY SERVICE! DROPPING: {q}",
+                        hex::encode(&q.base().transaction_id)
+                    );
                 },
-            Message::Response(r) => self.return_result(my_tid, Ok(r)).await,
-            Message::Error(e) => self.return_result(my_tid, Err(e)).await,
+            Message::Response(r) => self.return_result(packet, Ok(r)).await,
+            Message::Error(e) => self.return_result(packet, Err(e)).await,
         }
     }
 
-    async fn return_result(&self, id: u16, result: QueryResult) {
+    async fn return_result(&self, packet: usize, result: QueryResult) {
+        let log_str = match &result {
+            Ok(r) => format!("{r}"),
+            Err(e) => format!("{e}"),
+        };
+        let id = &result.base().transaction_id;
         if let Some(waiting) = self.remove_from_queue(id, result.base().origin.addr()).await {
-            trace!("Returning value for [T:{id}]");
+            info!(
+                "[P:{packet}][T:{} {:03}ms]{log_str}",
+                hex::encode(id),
+                chrono::Local::now().timestamp_millis() - waiting.timestamp_millis
+            );
             waiting.return_value.send(result).ok();
         } else {
-            warn!("No one waiting for response [T:{id}]");
+            warn!("[P:{packet}][T:{} DROPD] NO ONE WAITING! DROPPING: {log_str}", hex::encode(id),);
         }
     }
 
     pub async fn query(&self, query: &Query) -> QueryResult {
         let _permit = self.state.max_q.acquire().await;
+        self.query_unbounded(query).await
+    }
+
+    pub async fn query_unbounded(&self, query: &Query) -> QueryResult {
         // if cfg!(debug_assertions) && !cfg!(test) {
         //     time::sleep(Duration::from_millis(1000)).await;
         // }
-        let my_tid = query.transaction_id.as_chunks().0.iter().next().map_or(0, |c| u16::from_be_bytes(*c));
         let (return_tx, return_rx) = oneshot::channel();
         {
             let mut queue = self.state.queries_outbound.lock().await;
             queue.push(OutstandingQuery {
-                transaction_id:   my_tid,
+                transaction_id:   query.transaction_id.clone(),
                 destination_addr: query.origin.addr(),
                 return_value:     return_tx,
+                timestamp_millis: chrono::Local::now().timestamp_millis(),
             });
         }
-        trace!("Query [T:{}] added to outstanding", my_tid);
+        trace!("Query [T:{}] added to outstanding", hex::encode(&query.transaction_id));
         let message = query.clone().into_message();
         self.send_message(&message).await.map_err(|e| message.base().clone().into_error_generic(&e.to_string()))?;
 
@@ -114,19 +129,19 @@ impl Service {
                 m.map_or_else(
                 |e|Result::Err(message.base().clone().into_error_generic(&e.to_string())),|r|r) }
             _ = sleep => {
-                self.remove_from_queue(my_tid, message.origin.addr()).await;
-                warn!("Query [T:{}] timed out", my_tid);
+                self.remove_from_queue(&query.transaction_id, message.origin.addr()).await;
+                warn!("Query [T:{}] timed out", hex::encode(&query.transaction_id));
                 Result::Err(message.base().clone().into_error_generic("Timeout"))
             }
         }
     }
 
-    async fn remove_from_queue(&self, id: u16, queried_addr: SocketAddr) -> Option<OutstandingQuery> {
-        trace!("Removing [T:{id}] from queue");
+    async fn remove_from_queue(&self, id: &Vec<u8>, queried_addr: SocketAddr) -> Option<OutstandingQuery> {
+        trace!("Removing [T:{}] from queue", hex::encode(id));
         let mut queue = self.state.queries_outbound.lock().await;
         queue
             .iter()
-            .position(|q| q.transaction_id == id)
+            .position(|q| q.transaction_id == *id)
             .map(|i| queue.remove(i))
             .or_else(|| queue.iter().position(|q| q.destination_addr == queried_addr).map(|i| queue.remove(i)))
     }

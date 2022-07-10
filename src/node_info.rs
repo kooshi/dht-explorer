@@ -51,7 +51,14 @@ impl NodeInfo {
 
 impl Display for NodeInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}@{}]", self.id, self.addr)
+        write!(f, "[{}@", self.id)?;
+        match self.addr {
+            SocketAddr::V6(_) => write!(f, "{}]", self.addr),
+            SocketAddr::V4(ip) => {
+                let b = ip.ip().octets();
+                write!(f, "{:03}.{:03}.{:03}.{:03}:{:05}]", b[0], b[1], b[2], b[3], ip.port())
+            }
+        }
     }
 }
 impl Debug for NodeInfo {

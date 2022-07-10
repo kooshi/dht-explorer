@@ -51,6 +51,10 @@ impl Messenger {
     pub async fn query(&self, query: &Query) -> QueryResult {
         self.service.query(query).await
     }
+
+    pub async fn query_unbounded(&self, query: &Query) -> QueryResult {
+        self.service.query_unbounded(query).await
+    }
 }
 
 pub type WrappedQueryHandler = Arc<dyn QueryHandler + Send + Sync>;

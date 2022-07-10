@@ -57,7 +57,7 @@ impl Node {
         let tokens = TokenGenerator::new();
         let server = Arc::new(Server { router, transaction: AtomicUsize::new(0), read_only, me, db, tokens });
         let handler: Option<WrappedQueryHandler> = if read_only { None } else { Some(server.clone()) };
-        let messenger = Arc::new(Messenger::new(addr, 500, handler, crate::MAX_CONCURRENCY).await?);
+        let messenger = Arc::new(Messenger::new(addr, 900, handler, crate::MAX_CONCURRENCY).await?);
         Ok(Node { server, messenger })
     }
 
@@ -208,10 +208,14 @@ impl Node {
         let me = self.clone();
         let next_highest = U160::from_hex("000007ffffffffffffffffffffffffffffffffff");
         let query_one = async move |n: NodeInfo| {
-            let samples =
-                me.messenger.query(&me.build_query(n.into(), QueryMethod::SampleInfohashes(n.id | next_highest))).await;
+            let samples = me
+                .messenger
+                .query_unbounded(&me.build_query(n.into(), QueryMethod::SampleInfohashes(n.id | next_highest)))
+                .await;
             if samples.is_err() && samples.as_ref().unwrap_err().error.0 != 201 {
-                me.messenger.query(&me.build_query(n.into(), QueryMethod::FindNode(n.id | next_highest))).await
+                me.messenger
+                    .query_unbounded(&me.build_query(n.into(), QueryMethod::FindNode(n.id | next_highest)))
+                    .await
             } else {
                 samples
             }
@@ -233,7 +237,7 @@ impl Node {
             if to_send.is_empty() {
                 break;
             }
-            for _ in 0..8 {
+            for _ in 0..20 {
                 query_next!()
             }
 

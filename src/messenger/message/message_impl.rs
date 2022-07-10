@@ -249,43 +249,73 @@ impl Display for Sender {
 
 impl Display for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let remote = match &self.origin {
-            Sender::Remote(n) => format!(" FROM {n}{}", self.client.as_ref().map_or("".to_owned(), |c| format!("{c}"))),
-            Sender::Me(_) => format!(" TO   {}", &self.destination),
+        write!(f, "[T:{}", hex::encode(&self.transaction_id))?;
+        let out_in = match &self.origin {
+            Sender::Remote(_) => "<<<<",
+            Sender::Me(_) => ">>>>",
         };
-        write!(f, "[T:{}]{remote} ", hex::encode(&self.transaction_id))?;
         match self {
-            Message::Query(q) => match &q.method {
-                QueryMethod::Ping => write!(f, "PING"),
-                QueryMethod::FindNode(n) => write!(f, "FIND {n}"),
-                QueryMethod::GetPeers(i) => write!(f, "GET PEERS {i}"),
-                QueryMethod::AnnouncePeer { info_hash, token, .. } =>
-                    write!(f, "ANNOUNCES {info_hash} with token {}", base64::encode(token)),
-                QueryMethod::Put(_) => write!(f, "PUTs data"),
-                QueryMethod::Get => write!(f, "GETs data"),
-                QueryMethod::SampleInfohashes(_) => write!(f, "GET SAMPLES"),
-            },
-            Message::Response(r) => match &r.kind {
-                ResponseKind::Ok => write!(f, "OK"),
-                ResponseKind::KNearest { nodes: k, token: t } => write!(
-                    f,
-                    "NEAREST {} nodes{}",
-                    k.len(),
-                    t.as_ref().map_or("".into(), |t| format!(" and token {}", base64::encode(&t)))
-                ),
-                ResponseKind::Peers { peers: p, token: t } =>
-                    write!(f, "{} PEERS and token {}", p.len(), base64::encode(&t)),
-                ResponseKind::Data(_) => write!(f, "some data"),
-                ResponseKind::Samples { samples, available, interval, .. } => write!(
-                    f,
-                    "{} of {} hashes (refresh in {})",
-                    samples.len(),
-                    available,
-                    chrono::Duration::seconds(*interval as i64)
-                ),
-            },
-            Message::Error(e) => write!(f, "{e}"),
+            Message::Query(q) => write!(f, " Q{out_in}]{q}"),
+            Message::Response(r) => write!(f, " R{out_in}]{r}"),
+            Message::Error(e) => write!(f, " E{out_in}]{e}"),
         }
+    }
+}
+impl Display for Query {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let remote = match &self.origin {
+            Sender::Remote(n) => format!("{n}{}", self.client.as_ref().map_or("".to_owned(), |c| format!("{c}"))),
+            Sender::Me(_) => format!("{}", &self.destination),
+        };
+        write!(f, "{remote} ")?;
+        match &self.method {
+            QueryMethod::Ping => write!(f, "PING"),
+            QueryMethod::FindNode(n) => write!(f, "FIND {n}"),
+            QueryMethod::GetPeers(i) => write!(f, "GET PEERS {i}"),
+            QueryMethod::AnnouncePeer { info_hash, token, .. } =>
+                write!(f, "ANNOUNCES {info_hash} with token {}", base64::encode(token)),
+            QueryMethod::Put(_) => write!(f, "PUTs data"),
+            QueryMethod::Get => write!(f, "GETs data"),
+            QueryMethod::SampleInfohashes(_) => write!(f, "GET SAMPLES"),
+        }
+    }
+}
+impl Display for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let remote = match &self.origin {
+            Sender::Remote(n) => format!("{n}{}", self.client.as_ref().map_or("".to_owned(), |c| format!("{c}"))),
+            Sender::Me(_) => format!("{}", &self.destination),
+        };
+        write!(f, "{remote} ")?;
+        match &self.kind {
+            ResponseKind::Ok => write!(f, "OK"),
+            ResponseKind::KNearest { nodes: k, token: t } => write!(
+                f,
+                "NEAREST {} nodes{}",
+                k.len(),
+                t.as_ref().map_or("".into(), |t| format!(" and token {}", base64::encode(&t)))
+            ),
+            ResponseKind::Peers { peers: p, token: t } =>
+                write!(f, "{} PEERS and token {}", p.len(), base64::encode(&t)),
+            ResponseKind::Data(_) => write!(f, "some data"),
+            ResponseKind::Samples { samples, available, interval, .. } => write!(
+                f,
+                "{} of {} hashes (refresh in {})",
+                samples.len(),
+                available,
+                chrono::Duration::seconds(*interval as i64)
+            ),
+        }
+    }
+}
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let remote = match &self.origin {
+            Sender::Remote(n) => format!("{n}{}", self.client.as_ref().map_or("".to_owned(), |c| format!("{c}"))),
+            Sender::Me(_) => format!("{}", &self.destination),
+        };
+        write!(f, "{remote} ")?;
+        write!(f, r#"({}) "{}""#, self.error.0, self.error.1)
     }
 }
 

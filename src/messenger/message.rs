@@ -112,11 +112,6 @@ impl KnownError {
 }
 
 impl std::error::Error for Error {}
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, r#"({}) "{}""#, self.error.0, self.error.1)
-    }
-}
 
 impl Query {
     pub fn into_message(self) -> Message {
@@ -147,6 +142,21 @@ impl IMessageBase for QueryResult {
             Ok(r) => &r.base,
             Err(e) => &e.base,
         }
+    }
+}
+impl IMessageBase for Query {
+    fn base(&self) -> &MessageBase {
+        &self.base
+    }
+}
+impl IMessageBase for Response {
+    fn base(&self) -> &MessageBase {
+        &self.base
+    }
+}
+impl IMessageBase for Error {
+    fn base(&self) -> &MessageBase {
+        &self.base
     }
 }
 impl Sender {
