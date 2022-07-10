@@ -91,9 +91,9 @@ impl Service {
 
     pub async fn query(&self, query: &Query) -> QueryResult {
         let _permit = self.state.max_q.acquire().await;
-        if cfg!(debug_assertions) && !cfg!(test) {
-            time::sleep(Duration::from_millis(1000)).await;
-        }
+        // if cfg!(debug_assertions) && !cfg!(test) {
+        //     time::sleep(Duration::from_millis(1000)).await;
+        // }
         let my_tid = query.transaction_id.as_chunks().0.iter().next().map_or(0, |c| u16::from_be_bytes(*c));
         let (return_tx, return_rx) = oneshot::channel();
         {

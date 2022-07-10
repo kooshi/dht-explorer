@@ -61,6 +61,7 @@ impl Ipv4AddrExt for Ipv4Addr {
     }
 }
 
+#[derive(Default)]
 pub struct UnboundedConcurrentTaskSet<T> {
     handles: Vec<RemoteHandle<T>>,
 }

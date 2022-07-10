@@ -1,4 +1,5 @@
-use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize};
+use serde::ser::SerializeSeq;
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Error(pub u16, pub String);

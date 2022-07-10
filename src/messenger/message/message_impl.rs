@@ -197,12 +197,11 @@ impl Message {
                     base.origin = Sender::Remote(NodeInfo { id: response.id, addr: origin_addr });
                     Message::Response(Response {
                         base,
-                        kind: if let Some(nodes) = response.nodes {
-                            ResponseKind::KNearest { nodes: nodes.dht_nodes, token: response.token }
-                        } else if let Some(peers) = response.values {
+                        kind: if let Some(peers) = response.values {
                             ResponseKind::Peers {
                                 peers: peers.iter().filter_map(|p| p.socket_addr).collect(),
                                 token: response.token.ok_or(err)?,
+                                //todo libtorrent also returns knearest here
                             }
                         } else if response.bep44.v.is_some() {
                             ResponseKind::Data(response.bep44)
@@ -213,6 +212,8 @@ impl Message {
                                 available: response.bep51.num.unwrap_or_default(),
                                 interval:  response.bep51.interval.unwrap_or_default(),
                             }
+                        } else if let Some(nodes) = response.nodes {
+                            ResponseKind::KNearest { nodes: nodes.dht_nodes, token: response.token }
                         } else {
                             ResponseKind::Ok
                         },

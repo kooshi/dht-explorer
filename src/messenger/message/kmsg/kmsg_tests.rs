@@ -1,6 +1,8 @@
 use super::*;
-use crate::{u160::U160, utils};
-use std::{net::SocketAddr, str::FromStr};
+use crate::u160::U160;
+use crate::utils;
+use std::net::SocketAddr;
+use std::str::FromStr;
 #[test]
 pub fn find_node() {
     let msg = bt_bencode::from_slice::<KMessage>(

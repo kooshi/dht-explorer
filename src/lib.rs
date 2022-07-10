@@ -4,6 +4,7 @@
 #![feature(iter_next_chunk)]
 #![feature(negative_impls)]
 #![feature(array_windows)]
+#![feature(map_first_last)]
 mod messenger;
 pub mod node;
 mod node_info;

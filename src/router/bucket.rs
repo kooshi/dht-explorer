@@ -1,9 +1,14 @@
-use crate::{node_info::NodeInfo, u160::U160};
+use crate::node_info::NodeInfo;
+use crate::u160::U160;
 use async_recursion::async_recursion;
 use log::{debug, info, trace};
-use serde::{self, ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
+use serde::ser::SerializeSeq;
+use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use simple_error::{try_with, SimpleResult};
-use std::{fs::OpenOptions, ops::Deref, path::PathBuf, sync::Arc};
+use std::fs::OpenOptions;
+use std::ops::Deref;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::{OnceCell, RwLock};
 
 const MAX_BUCKET_INDEX: u8 = 159;
@@ -254,9 +259,14 @@ impl PartialEq for Bucket {
 #[cfg(test)]
 mod tests {
     use super::Bucket;
-    use crate::{node_info::NodeInfo, u160::U160, utils};
+    use crate::node_info::NodeInfo;
+    use crate::u160::U160;
+    use crate::utils;
     use log::info;
-    use std::{net::SocketAddr, ops::Deref, str::FromStr, sync::Arc};
+    use std::net::SocketAddr;
+    use std::ops::Deref;
+    use std::str::FromStr;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn full() {
