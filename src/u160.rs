@@ -44,8 +44,12 @@ impl U160 {
         Self { msbytes: rand::random(), lsbytes: rand::random() }
     }
 
-    pub fn empty() -> Self {
+    pub fn min() -> Self {
         Self { msbytes: 0, lsbytes: 0 }
+    }
+
+    pub fn max() -> Self {
+        Self { msbytes: u128::MAX, lsbytes: u32::MAX }
     }
 
     pub fn distance(self, other: Self) -> Self {
@@ -209,7 +213,7 @@ mod tests {
         let bigone = U160::new(1, 0);
         assert!(bigone > two);
         assert!(two > one);
-        assert!(one > U160::empty());
+        assert!(one > U160::min());
     }
 
     #[test]
@@ -279,8 +283,8 @@ mod tests {
         assert_eq!(one >> 128, two);
         assert_eq!(two << 128, thr);
 
-        assert_eq!(U160::rand() >> 160, U160::empty());
-        assert_eq!(U160::rand() << 160, U160::empty());
+        assert_eq!(U160::rand() >> 160, U160::min());
+        assert_eq!(U160::rand() << 160, U160::min());
     }
 
     #[test]

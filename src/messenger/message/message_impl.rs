@@ -146,7 +146,7 @@ impl Message {
 
     pub fn from_kmsg(origin_addr: SocketAddr, kmsg: KMessage) -> Result<Self, KnownError> {
         let mut base = MessageBase {
-            origin:         Sender::Remote(NodeInfo { id: U160::empty(), addr: origin_addr }),
+            origin:         Sender::Remote(NodeInfo { id: U160::min(), addr: origin_addr }),
             destination:    Receiver::Me,
             transaction_id: kmsg.transaction_id,
             requestor_addr: if let Some(wrap) = kmsg.requestor_ip { wrap.socket_addr } else { None },

@@ -271,7 +271,7 @@ mod tests {
     #[tokio::test]
     async fn full() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-        let bucket = Arc::new(Bucket::root(U160::empty(), 8));
+        let bucket = Arc::new(Bucket::root(U160::min(), 8));
         let test_node = NodeInfo { id: U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"), addr: socket };
         bucket.add(test_node).await;
         fill(bucket.clone()).await;
@@ -283,7 +283,7 @@ mod tests {
     #[tokio::test]
     async fn remove() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-        let bucket = Arc::new(Bucket::root(U160::empty(), 8));
+        let bucket = Arc::new(Bucket::root(U160::min(), 8));
         let test_node = NodeInfo { id: U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"), addr: socket };
         bucket.add(test_node).await;
         fill(bucket.clone()).await;
@@ -314,7 +314,7 @@ mod tests {
     #[tokio::test]
     async fn lookup() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-        let bucket = Arc::new(Bucket::root(U160::empty(), 30));
+        let bucket = Arc::new(Bucket::root(U160::min(), 30));
         fill(bucket.clone()).await;
         for _ in 0..60 {
             bucket.add(NodeInfo { id: U160::rand() >> (rand::random::<u8>() % 161), addr: socket }).await
@@ -328,14 +328,14 @@ mod tests {
         let k_nearest = bucket.lookup(query).await;
         println!("Searching for: {:?}\nFound:\n{:?}", query, k_nearest);
 
-        let k_nearest = bucket.lookup(U160::empty()).await;
-        println!("Searching for: {:?}\nFound:\n{:?}", U160::empty(), k_nearest);
+        let k_nearest = bucket.lookup(U160::min()).await;
+        println!("Searching for: {:?}\nFound:\n{:?}", U160::min(), k_nearest);
     }
 
     #[tokio::test]
     async fn fill_and_lookup_concurrent() {
         let socket = SocketAddr::from_str("127.0.0.1:1337").unwrap();
-        let bucket = Arc::new(Bucket::root(U160::empty(), 8));
+        let bucket = Arc::new(Bucket::root(U160::min(), 8));
         let test_node = NodeInfo { id: U160::from_hex("ffffffffffffffffffffffffffffffffffffffff"), addr: socket };
         bucket.add(test_node).await;
 
@@ -371,7 +371,7 @@ mod tests {
 
     #[tokio::test]
     async fn serde() {
-        let bucket = Arc::new(Bucket::root(U160::empty(), 8));
+        let bucket = Arc::new(Bucket::root(U160::min(), 8));
         fill(bucket.clone()).await;
         let serbuck = bucket.clone();
         let ser = tokio::task::spawn_blocking(move || bt_bencode::to_vec(serbuck.as_ref()).unwrap()).await.unwrap();
@@ -382,7 +382,7 @@ mod tests {
 
     #[tokio::test]
     async fn file() {
-        let bucket = Arc::new(Bucket::root(U160::empty(), 8));
+        let bucket = Arc::new(Bucket::root(U160::min(), 8));
         fill(bucket.clone()).await;
         let path = "./target/bucket_test.ben";
         Bucket::save_to_file(bucket.clone(), path.into()).await.unwrap();

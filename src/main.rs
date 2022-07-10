@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let peer = require_with!(param!().peer.to_socket_addrs()?.next(), "invalid peer address");
     let addr = SocketAddr::from_str(&param!().bind_v4)?;
     let public_ip = try_with!(IpAddr::from_str(param!().public_ip.as_ref().unwrap()), "invalid public ip");
-    let node = Node::new(addr, false, public_ip, "./target/state/".into()).await?;
+    let node = Node::new(addr, true, public_ip, "./target/state/".into()).await?;
     node.bootstrap(peer).await?;
     time::sleep(Duration::from_millis(10000)).await;
     // let found = node.find(U160::from_hex("B9FF4E7CE60DA918EB18D06AF1FDE0050D78E96E"), true).await;
@@ -54,8 +54,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<U160>(100);
     let handle = tokio::spawn(async move {
-        let mut file =
-            tokio::fs::OpenOptions::new().write(true).create(true).open("./target/state/infohashes.txt").await.unwrap();
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open("./target/state/infohashes.txt")
+            .await
+            .unwrap();
         while let Some(hash) = rx.recv().await {
             //info!("GOT ONE {hash}");
             file.write_all(format!("{}\n", hash.to_hex()).as_bytes()).await.log();
@@ -111,18 +116,18 @@ fn init_logging() -> SimpleResult<()> {
             Dispatch::new()
                 .format((fmt)(!param!().log_no_color))
                 .level(param!().log_std_level.unwrap_or(param!().log_level))
-                .level_for("router::bucket", log::LevelFilter::Off)
-                .level_for("sled::pagecache", log::LevelFilter::Off)
-                .level_for("dht_explorer::messenger::service", log::LevelFilter::Info)
+                .level_for("dht_explorer::messenger", log::LevelFilter::Off)
                 .level_for("dht_explorer::node", log::LevelFilter::Debug)
+                .level_for("dht_explorer::router", log::LevelFilter::Off)
+                .level_for("sled", log::LevelFilter::Off)
                 .chain(std::io::stdout()),
         )
         .chain(
             Dispatch::new()
                 .format((fmt)(false))
                 .level(param!().log_file_level.unwrap_or(param!().log_level))
-                .level_for("router::bucket", log::LevelFilter::Off)
-                .level_for("sled::pagecache", log::LevelFilter::Off)
+                .level_for("dht_explorer::router", log::LevelFilter::Off)
+                .level_for("sled", log::LevelFilter::Off)
                 .chain(init_fail!(fern::log_file(
                     chrono::Local::now()
                         .format(&(param!().log_dir.to_string() + test_str + &param!().log_file))

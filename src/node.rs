@@ -1,5 +1,5 @@
 use crate::messenger::message::kmsg::wrappers::SocketAddrWrapper;
-use crate::messenger::message::{self, KnownError, MessageBase, Query, QueryResult, Receiver, ResponseKind, Sender};
+use crate::messenger::message::{self, KnownError, MessageBase, Query, QueryResult, Receiver, Response, ResponseKind, Sender};
 use crate::messenger::{self, Messenger, QueryHandler, WrappedQueryHandler};
 use crate::node_info::NodeInfo;
 use crate::router::Router;
@@ -8,7 +8,7 @@ use crate::utils::{LogErrExt, MySliceExt, UnboundedConcurrentTaskSet};
 mod token;
 use self::token::TokenGenerator;
 use async_trait::async_trait;
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use messenger::message::QueryMethod;
 use rand::prelude::IteratorRandom;
 use rand::rngs::SmallRng;
@@ -20,6 +20,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use tokio::sync::{Mutex, RwLock};
+use tokio::task::JoinHandle;
 
 const PEER_TREE: &str = "peers";
 
@@ -57,7 +59,7 @@ impl Node {
         let tokens = TokenGenerator::new();
         let server = Arc::new(Server { router, transaction: AtomicUsize::new(0), read_only, me, db, tokens });
         let handler: Option<WrappedQueryHandler> = if read_only { None } else { Some(server.clone()) };
-        let messenger = Arc::new(Messenger::new(addr, 900, handler, crate::MAX_CONCURRENCY).await?);
+        let messenger = Arc::new(Messenger::new(addr, 500, handler, crate::MAX_CONCURRENCY).await?);
         Ok(Node { server, messenger })
     }
 
@@ -87,6 +89,13 @@ impl Node {
         }
     }
 
+    pub async fn find_n_nodes_starting_at(&self, target: U160, n: u8, nodes: Vec<NodeInfo>) -> Vec<NodeInfo> {
+        match self.find_n_starting_at(target, false, n, nodes).await {
+            Found::KClosest(n) => n,
+            Found::Peers(_) => unreachable!(),
+        }
+    }
+
     pub async fn find_peers(&self, target: U160) -> HashSet<SocketAddr> {
         match self.find(target, true, crate::K_SIZE).await {
             Found::KClosest(_) => unreachable!(),
@@ -95,9 +104,13 @@ impl Node {
     }
 
     async fn find(&self, target: U160, find_peers: bool, k: u8) -> Found {
+        self.find_n_starting_at(target, find_peers, k, self.server.router.lookup(target).await).await
+    }
+
+    async fn find_n_starting_at(&self, target: U160, find_peers: bool, k: u8, nodes: Vec<NodeInfo>) -> Found {
+        debug!("Searching network for {target} {}", if find_peers { "infohash" } else { "node" });
         let mut tasks = UnboundedConcurrentTaskSet::new();
-        let state = self.server.clone();
-        tasks.add_task(async move { OneResult::FoundSome(state.router.lookup(target).await) });
+        tasks.add_task(async move { OneResult::FoundSome(nodes) });
 
         #[derive(PartialEq, Eq)]
         struct Close(U160, NodeInfo);
@@ -134,7 +147,7 @@ impl Node {
                         }
                     },
                 OneResult::RemoveOne(n) => {
-                    debug!("Ignoring node that didn't respond {n}");
+                    trace!("Ignoring node that didn't respond {n}");
                     ignore.insert(n);
                 }
                 OneResult::Peers(mut p) => p.drain(..).for_each(|p| {
@@ -169,7 +182,7 @@ impl Node {
                 }
             }
             Err(e) => {
-                error!("Received error response: {}", e);
+                trace!("Received error response: {}", e);
                 self.server.router.ban_id(to.id).await;
                 OneResult::RemoveOne(to)
             }
@@ -188,15 +201,20 @@ impl Node {
     }
 
     pub async fn infohash_sweep(&self, tx: tokio::sync::mpsc::Sender<U160>) {
+        let queried = Arc::new(Mutex::new(BTreeSet::<U160>::new()));
         let mut tasks = UnboundedConcurrentTaskSet::new();
         let mut to_send = BTreeSet::<NodeInfo>::new();
-        for n in self.find_n_nodes(U160::empty(), 255).await {
-            to_send.insert(n);
+        {
+            let mut queried = queried.lock().await;
+            for n in self.find_n_nodes(U160::min(), 255).await {
+                queried.insert(n.id);
+                to_send.insert(n);
+            }
+            for n in self.find_n_nodes(!U160::min(), 255).await {
+                queried.insert(n.id);
+                to_send.insert(n);
+            }
         }
-        for n in self.find_n_nodes(!U160::empty(), 255).await {
-            to_send.insert(n);
-        }
-        let mut queried = BTreeSet::<U160>::new();
         fn prune(tree: &mut BTreeSet<U160>) {
             //todo find a better way of tracking seen
             //high risk of wrapping arround with this
@@ -204,70 +222,87 @@ impl Node {
                 tree.pop_first();
             }
         }
-
+        let to_send = Arc::new(RwLock::new(to_send));
         let me = self.clone();
         let next_highest = U160::from_hex("000007ffffffffffffffffffffffffffffffffff");
         let query_one = async move |n: NodeInfo| {
-            let samples = me
+            if let Ok(Response { kind: ResponseKind::Samples { nodes, samples, .. }, .. }) = me
                 .messenger
                 .query_unbounded(&me.build_query(n.into(), QueryMethod::SampleInfohashes(n.id | next_highest)))
-                .await;
-            if samples.is_err() && samples.as_ref().unwrap_err().error.0 != 201 {
-                me.messenger
-                    .query_unbounded(&me.build_query(n.into(), QueryMethod::FindNode(n.id | next_highest)))
-                    .await
+                .await
+            {
+                debug!("Got {} samples", samples.len());
+                (n.id, nodes, Some(samples))
+            } else if let Ok(Response { kind: ResponseKind::KNearest { nodes, .. }, .. }) = me
+                .messenger
+                .query_unbounded(&me.build_query(n.into(), QueryMethod::FindNode(n.id | next_highest)))
+                .await
+            {
+                debug!("Got {} nodes from target", nodes.len());
+                (n.id, nodes, None)
             } else {
-                samples
+                (n.id, vec![], None)
+            }
+        };
+
+        let add_to_send_queue = async move |target: U160,
+                                            nodes: Vec<NodeInfo>,
+                                            q: Arc<RwLock<BTreeSet<NodeInfo>>>,
+                                            queried: Arc<Mutex<BTreeSet<U160>>>| {
+            let mut to_send = q.write().await;
+            let mut queried = queried.lock().await;
+            let mut added = 0;
+            for n in nodes.iter().filter(|n| n.id > target) {
+                if queried.insert(n.id) && to_send.insert(*n) {
+                    added += 1;
+                }
+            }
+            if added > 0 {
+                debug!("added {} nodes to queue", added);
             }
         };
 
         macro_rules! query_next {
-            () => {
+            () => {{
+                let mut to_send = to_send.write().await;
                 if let Some(n) = to_send.pop_first() {
                     let keyspace_percent = ((n.id.ms_u64() as f64) * 100.0) / (u64::MAX as f64);
                     info!("Traveled {keyspace_percent:.5}% of keyspace. {} known remaining", to_send.len());
-                    queried.insert(n.id);
                     tasks.add_task(query_one.clone()(n));
                 }
-            };
+            }};
         }
 
         debug!("Beginning keyspace traversal");
-        loop {
-            if to_send.is_empty() {
-                break;
+        for _ in 0..200 {
+            query_next!()
+        }
+        let mut backfill_handle: Option<JoinHandle<()>> = None;
+        while let Some((target, nodes, samples)) = tasks.get_next_result().await {
+            for s in samples.iter().flatten() {
+                tx.send(*s).await.log()
             }
-            for _ in 0..20 {
-                query_next!()
-            }
-
-            while let Some(result) = tasks.get_next_result().await {
-                prune(&mut queried);
-                match result {
-                    Ok(r) => match r.kind {
-                        ResponseKind::KNearest { nodes, .. } => Some(nodes),
-                        ResponseKind::Samples { samples, nodes, .. } => {
-                            for s in samples {
-                                tx.send(s).await.log();
-                            }
-                            Some(nodes)
-                        }
-                        _ => {
-                            warn!("unexpected sample response {r:?}");
-                            None
-                        }
-                    },
-                    Err(_e) => None,
+            if nodes.is_empty() {
+                let large_gap = {
+                    to_send.read().await.first().map_or(false, |q| {
+                        q.id.distance(target) > U160::from_hex("00003fffffffffffffffffffffffffffffffffff")
+                    })
+                };
+                if large_gap && backfill_handle.as_ref().map_or(true, |h| h.is_finished()) {
+                    let me = self.clone();
+                    let to_send_clone = to_send.clone();
+                    let queried_clone = queried.clone();
+                    backfill_handle = Some(tokio::spawn(async move {
+                        let nodes = { to_send_clone.read().await.iter().take(8).copied().collect() };
+                        let nodes = me.find_n_nodes_starting_at(target, 255, nodes).await;
+                        debug!("BACKFILL {} nodes from network", nodes.len());
+                        add_to_send_queue(target, nodes, to_send_clone, queried_clone).await;
+                    }));
                 }
-                .iter()
-                .flatten()
-                .for_each(|n| {
-                    if queried.insert(n.id) {
-                        to_send.insert(*n);
-                    }
-                });
-                query_next!()
+            } else {
+                add_to_send_queue(target, nodes, to_send.clone(), queried.clone()).await;
             }
+            query_next!()
         }
     }
 }
