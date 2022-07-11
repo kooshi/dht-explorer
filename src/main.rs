@@ -48,26 +48,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let node = Node::new(addr, true, public_ip, "./target/state/".into()).await?;
     node.bootstrap(peer).await?;
     time::sleep(Duration::from_millis(10000)).await;
-    // let found = node.find(U160::from_hex("B9FF4E7CE60DA918EB18D06AF1FDE0050D78E96E"), true).await;
-    // info!("Found! {found:?}");
-    // tokio::signal::ctrl_c().await.unwrap();
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<U160>(100);
-    let handle = tokio::spawn(async move {
-        let mut file = tokio::fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open("./target/state/infohashes.txt")
-            .await
-            .unwrap();
-        while let Some(hash) = rx.recv().await {
-            //info!("GOT ONE {hash}");
-            file.write_all(format!("{}\n", hash.to_hex()).as_bytes()).await.log();
-        }
-    });
-    node.infohash_sweep(tx).await;
-    join!(handle).0.log();
+    let found = node.find_peers(U160::from_hex("B9FF4E7CE60DA918EB18D06AF1FDE0050D78E96E")).await;
+    info!("Found! {found:?}");
+    tokio::signal::ctrl_c().await.unwrap();
+
+    // let (tx, mut rx) = tokio::sync::mpsc::channel::<U160>(100);
+    // let handle = tokio::spawn(async move {
+    //     let mut file = tokio::fs::OpenOptions::new()
+    //         .write(true)
+    //         .truncate(true)
+    //         .create(true)
+    //         .open("./target/state/infohashes.txt")
+    //         .await
+    //         .unwrap();
+    //     while let Some(hash) = rx.recv().await {
+    //         //info!("GOT ONE {hash}");
+    //         file.write_all(format!("{}\n", hash.to_hex()).as_bytes()).await.log();
+    //     }
+    // });
+    // node.infohash_sweep(tx).await;
+    // join!(handle).0.log();
 
     Ok(())
 }
@@ -116,7 +117,7 @@ fn init_logging() -> SimpleResult<()> {
             Dispatch::new()
                 .format((fmt)(!param!().log_no_color))
                 .level(param!().log_std_level.unwrap_or(param!().log_level))
-                .level_for("dht_explorer::messenger", log::LevelFilter::Off)
+                //.level_for("dht_explorer::messenger", log::LevelFilter::Off)
                 .level_for("dht_explorer::node", log::LevelFilter::Debug)
                 .level_for("dht_explorer::router", log::LevelFilter::Off)
                 .level_for("sled", log::LevelFilter::Off)

@@ -124,10 +124,11 @@ impl Message {
                         response.nodes = Some(CompactIPv4NodeInfo { dht_nodes: nodes.clone() });
                         response.token = token.clone();
                     }
-                    ResponseKind::Peers { peers, token } => {
+                    ResponseKind::Peers { peers, token, nodes } => {
                         response.values =
                             Some(peers.iter().map(|p| SocketAddrWrapper { socket_addr: Some(*p) }).collect());
                         response.token = Some(token.clone());
+                        response.nodes = nodes.as_ref().map(|n| CompactIPv4NodeInfo { dht_nodes: n.to_vec() });
                     }
                     ResponseKind::Data(base) => response.bep44 = base.clone(),
                     ResponseKind::Samples { nodes, samples, available, interval } => {
@@ -182,8 +183,14 @@ impl Message {
                             kmsg::Q_GET => QueryMethod::Get,
                             kmsg::Q_SAMPLE_INFOHASHES => QueryMethod::SampleInfohashes(args.target.ok_or(err)?),
                             m => {
-                                error!("Got unknown method {m}");
-                                return Err(crate::messenger::message::KnownError::MethodUnknown);
+                                //libtorrent forward compatibility (https://www.libtorrent.org/dht_extensions.html)
+                                if let Some(target) = args.info_hash.or(args.target) {
+                                    error!("Got unknown method {m}, but treating it as find_node");
+                                    QueryMethod::FindNode(target)
+                                } else {
+                                    error!("Got unknown method {m}");
+                                    return Err(crate::messenger::message::KnownError::MethodUnknown);
+                                }
                             }
                         },
                     })
@@ -201,7 +208,7 @@ impl Message {
                             ResponseKind::Peers {
                                 peers: peers.iter().filter_map(|p| p.socket_addr).collect(),
                                 token: response.token.ok_or(err)?,
-                                //todo libtorrent also returns knearest here
+                                nodes: response.nodes.map(|c| c.dht_nodes),
                             }
                         } else if response.bep44.v.is_some() {
                             ResponseKind::Data(response.bep44)
@@ -295,8 +302,13 @@ impl Display for Response {
                 k.len(),
                 t.as_ref().map_or("".into(), |t| format!(" and token {}", base64::encode(&t)))
             ),
-            ResponseKind::Peers { peers: p, token: t } =>
-                write!(f, "{} PEERS and token {}", p.len(), base64::encode(&t)),
+            ResponseKind::Peers { peers: p, token: t, nodes: n } => write!(
+                f,
+                "{} PEERS, {} NODES, and token {}",
+                p.len(),
+                n.as_ref().map_or(0, Vec::len),
+                base64::encode(&t)
+            ),
             ResponseKind::Data(_) => write!(f, "some data"),
             ResponseKind::Samples { samples, available, interval, .. } => write!(
                 f,

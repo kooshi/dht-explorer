@@ -67,7 +67,8 @@ pub struct Response {
 pub enum ResponseKind {
     Ok,
     KNearest { nodes: Vec<NodeInfo>, token: Option<Vec<u8>> },
-    Peers { peers: Vec<SocketAddr>, token: Vec<u8> },
+    //include nodes in get_peers response (https://www.libtorrent.org/dht_extensions.html)
+    Peers { peers: Vec<SocketAddr>, token: Vec<u8>, nodes: Option<Vec<NodeInfo>> },
     Data(kmsg::kresponse::KResponseBep44),
     Samples { nodes: Vec<NodeInfo>, samples: Vec<U160>, available: u64, interval: u16 },
 }

@@ -96,11 +96,8 @@ impl Node {
         }
     }
 
-    pub async fn find_peers(&self, target: U160) -> HashSet<SocketAddr> {
-        match self.find(target, true, crate::K_SIZE).await {
-            Found::KClosest(_) => unreachable!(),
-            Found::Peers(p) => p,
-        }
+    pub async fn find_peers(&self, target: U160) -> Found {
+        self.find(target, true, crate::K_SIZE).await
     }
 
     async fn find(&self, target: U160, find_peers: bool, k: u8) -> Found {
@@ -127,32 +124,37 @@ impl Node {
         let mut ignore = HashSet::new();
         let mut seen = BTreeSet::new();
         let mut peers = HashSet::new();
+
         while let Some(one_result) = tasks.get_next_result().await {
-            match one_result {
-                OneResult::FoundSome(found) =>
-                    for found in found {
-                        if
-                        //closer to target than the kth * 2 seen
-                        seen
-                            .iter()
-                            .nth((crate::K_SIZE * 2).into())
-                            .map_or(true, |&Close(d, _)| target.distance(found.id) < d)
-                            //we haven't seen it yet
-                            && seen.insert(Close(target.distance(found.id), found))
-                            //is valid
-                            && found.validate()
-                        {
-                            let selfclone = self.clone();
-                            tasks.add_task(async move { selfclone.send_find(found, target, find_peers).await })
-                        }
-                    },
+            let found_nodes = match one_result {
+                OneResult::FoundSome(nodes) => Some(nodes),
                 OneResult::RemoveOne(n) => {
                     trace!("Ignoring node that didn't respond {n}");
                     ignore.insert(n);
+                    None
                 }
-                OneResult::Peers(mut p) => p.drain(..).for_each(|p| {
-                    peers.insert(p);
-                }),
+                OneResult::Peers(mut p, n) => {
+                    p.drain(..).for_each(|p| {
+                        peers.insert(p);
+                    });
+                    n
+                }
+            };
+            for found in found_nodes.into_iter().flatten() {
+                if
+                //closer to target than the kth * 2 seen
+                seen
+                        .iter()
+                        .nth((crate::K_SIZE * 2).into())
+                        .map_or(true, |&Close(d, _)| target.distance(found.id) < d)
+                        //we haven't seen it yet
+                        && seen.insert(Close(target.distance(found.id), found))
+                        //is valid
+                        && found.validate()
+                {
+                    let selfclone = self.clone();
+                    tasks.add_task(async move { selfclone.send_find(found, target, find_peers).await })
+                }
             }
         }
         if !peers.is_empty() {
@@ -174,7 +176,7 @@ impl Node {
                 self.server.router.add(r.origin.into()).await;
                 match r.kind {
                     ResponseKind::KNearest { nodes: n, .. } => OneResult::FoundSome(n),
-                    ResponseKind::Peers { peers: p, .. } if find_peers => OneResult::Peers(p),
+                    ResponseKind::Peers { peers: p, nodes: n, .. } if find_peers => OneResult::Peers(p, n),
                     _ => {
                         warn!("unexpected find node response");
                         OneResult::RemoveOne(to)
@@ -274,6 +276,7 @@ impl Node {
         }
 
         debug!("Beginning keyspace traversal");
+        //higher number here: more parallel travellers, more bandwidth
         for _ in 0..200 {
             query_next!()
         }
@@ -295,7 +298,7 @@ impl Node {
                     backfill_handle = Some(tokio::spawn(async move {
                         let nodes = { to_send_clone.read().await.iter().take(8).copied().collect() };
                         let nodes = me.find_n_nodes_starting_at(target, 255, nodes).await;
-                        debug!("BACKFILL {} nodes from network", nodes.len());
+                        warn!("BACKFILL {} nodes from network", nodes.len());
                         add_to_send_queue(target, nodes, to_send_clone, queried_clone).await;
                     }));
                 }
@@ -310,7 +313,7 @@ impl Node {
 enum OneResult {
     FoundSome(Vec<NodeInfo>),
     RemoveOne(NodeInfo),
-    Peers(Vec<SocketAddr>),
+    Peers(Vec<SocketAddr>, Option<Vec<NodeInfo>>),
 }
 
 #[derive(Debug)]
@@ -368,6 +371,7 @@ impl Server {
                     .map(|a| a.socket_addr.unwrap())
                     .collect(),
                 token,
+                nodes: Some(self.router.lookup(info_hash).await),
             }))
         } else {
             Ok(response_base.into_response(ResponseKind::KNearest {
